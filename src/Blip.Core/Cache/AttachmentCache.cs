@@ -6,7 +6,7 @@ namespace Blip.Core.Cache;
 /// <summary>
 /// Attachment bytes fetched from the Mac, cached under %LOCALAPPDATA%\Blip\att with a
 /// size-capped LRU (by last access), the same policy as the Linux client's
-/// ~/.cache/blip/att. Attachments are cached; message TEXT never is.
+/// ~/.cache/blip/att. Attachments are cached here in the clear; message text only ever lands in the DPAPI-protected snapshot (SnapshotStore).
 /// </summary>
 /// <remarks>The Linux client relies on full-disk encryption for this cache; on Windows
 /// that is BitLocker. Deleting the folder is always safe: everything refetches.</remarks>

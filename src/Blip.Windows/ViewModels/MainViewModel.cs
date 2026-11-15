@@ -2,8 +2,10 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Data;
+using System.Threading.Channels;
 using System.Windows.Media.Imaging;
 using Blip.Core;
+using Blip.Core.Cache;
 using Blip.Core.Live;
 using Blip.Core.Logic;
 using Blip.Core.Protocol;
@@ -17,6 +19,8 @@ namespace Blip.Windows.ViewModels;
 public sealed partial class MainViewModel : ObservableObject
 {
     private const int ThreadLimit = 80;
+    private const int AvatarWorkers = 2;      // photos queue behind thread loads and image previews
+    private const int PrefetchThreads = 8;    // newest conversations warmed after the first live load
     private readonly BlipSession _session;
     private readonly ReadMarks _marks = new();
     private readonly Dictionary<string, DateTimeOffset> _notified = new(StringComparer.Ordinal);
@@ -25,6 +29,16 @@ public sealed partial class MainViewModel : ObservableObject
     private bool _firstLoad = true;
     private int _reloadQueued;
     private IReadOnlyList<Message> _threadModels = [];
+
+    // Last data the Mac returned, kept so a conversation opens instantly and so it can be snapshotted.
+    private readonly object _dataLock = new();
+    private readonly Dictionary<string, IReadOnlyList<Message>> _threadCache = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _liveThreads = new(StringComparer.Ordinal);
+    private SidebarData? _sidebar;
+    private IReadOnlyList<Conversation> _lastConversations = [];
+    private int _saveQueued;
+    private bool _prefetched;
+    private readonly Channel<ConversationViewModel> _avatarQueue = Channel.CreateUnbounded<ConversationViewModel>();
 
     public ObservableCollection<ConversationViewModel> Conversations { get; } = [];
     public ICollectionView ConversationsView { get; }
@@ -66,8 +80,147 @@ public sealed partial class MainViewModel : ObservableObject
 
     public void Start()
     {
+        LoadSnapshot();
+        for (var i = 0; i < AvatarWorkers; i++) _ = Task.Run(AvatarWorkerAsync);
         _session.Monitor.Start();
         _ = ReloadAsync();
+    }
+
+    // ------------------------------------------------------------ snapshot (local_cache)
+
+    /// <summary>Paint last session's sidebar before the Mac answers. Live data replaces it moments later.</summary>
+    private void LoadSnapshot()
+    {
+        if (_session.Snapshots is not { } store) return;
+        var snap = store.Load(SnapshotStore.KeyFor(_session.Config));
+        if (snap is null) return;
+        var data = new SidebarData(snap.Chats, snap.ReadState ?? new ReadStateSnapshot(), snap.Groups);
+        lock (_dataLock)
+        {
+            _sidebar = data;
+            foreach (var (chat, msgs) in snap.Threads) _threadCache[chat] = msgs;
+        }
+        ApplyConversations(data.Build(), live: false);
+        StatusText = "Showing your last session while connecting to your Mac…";
+    }
+
+    private void ScheduleSave()
+    {
+        if (_session.Snapshots is null || Interlocked.Exchange(ref _saveQueued, 1) == 1) return;
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(TimeSpan.FromSeconds(3));
+            Interlocked.Exchange(ref _saveQueued, 0);
+            SaveSnapshot();
+        });
+    }
+
+    /// <summary>Write the snapshot now (also called on quit). Only data the Mac returned; never a pending bubble.</summary>
+    public void SaveSnapshot()
+    {
+        if (_session.Snapshots is not { } store) return;
+        Snapshot snap;
+        lock (_dataLock)
+        {
+            if (_sidebar is null) return;
+            var threads = new Dictionary<string, List<Message>>(StringComparer.Ordinal);
+            foreach (var c in _lastConversations)
+            {
+                if (threads.Count >= SnapshotStore.MaxThreads) break;
+                if (_threadCache.TryGetValue(c.Id, out var msgs)) threads[c.Id] = msgs.ToList();
+            }
+            snap = new Snapshot
+            {
+                Key = SnapshotStore.KeyFor(_session.Config),
+                SavedAt = DateTimeOffset.UtcNow,
+                Chats = _sidebar.Chats.ToList(),
+                ReadState = _sidebar.ReadState,
+                Groups = _sidebar.Groups.ToList(),
+                Threads = threads,
+            };
+        }
+        try { store.Save(snap); } catch { /* a snapshot is a convenience; the Mac is the source */ }
+    }
+
+    /// <summary>After the first live sidebar, fetch the newest few threads one at a time so opening them is instant.</summary>
+    private async Task PrefetchThreadsAsync(IReadOnlyList<Conversation> convs)
+    {
+        foreach (var c in convs.Where(c => ChatIds.IsValid(c.Id) && c.LastTime != DateTimeOffset.MinValue).Take(PrefetchThreads))
+        {
+            lock (_dataLock) if (_liveThreads.Contains(c.Id)) continue;
+            try
+            {
+                var msgs = await _session.Client.ThreadAsync(c.Id, ThreadLimit);
+                RememberThread(c.Id, msgs);
+            }
+            catch (BridgeOfflineException) { return; }
+            catch (Exception e) when (e is BridgeException or ArgumentException) { }
+        }
+    }
+
+    private void RememberThread(string chat, IReadOnlyList<Message> msgs)
+    {
+        lock (_dataLock)
+        {
+            _threadCache[chat] = msgs;
+            _liveThreads.Add(chat);
+        }
+        ScheduleSave();
+    }
+
+    // ------------------------------------------------------------ avatars
+
+    /// <summary>Faces from disk first (no Mac round trip), then fetch only what is missing or over a day old.</summary>
+    private void QueueAvatars(IReadOnlyList<ConversationViewModel> fresh) => _ = Task.Run(() =>
+    {
+        foreach (var vm in fresh)
+        {
+            var cached = _session.Avatars.TryGet(vm.Id);
+            if (cached?.Bytes is { } b) ShowAvatar(vm, b);
+            if (cached is not { Fresh: true }) _avatarQueue.Writer.TryWrite(vm);
+        }
+    });
+
+    private async Task AvatarWorkerAsync()
+    {
+        await foreach (var vm in _avatarQueue.Reader.ReadAllAsync())
+        {
+            try
+            {
+                var r = await _session.Client.AvatarLookupAsync(vm.Id);
+                if (!r.Known) continue;
+                var before = _session.Avatars.TryGet(vm.Id);
+                _session.Avatars.Store(vm.Id, r.Bytes);
+                if (r.Bytes is { } b && (before?.Bytes is not { } old || !old.AsSpan().SequenceEqual(b))) ShowAvatar(vm, b);
+            }
+            catch (BridgeOfflineException)
+            {
+                // Try again on the next sidebar load once the Mac is back.
+                await Application.Current.Dispatcher.InvokeAsync(() => { if (_avatars.TryGetValue(vm.Id, out var f) && f is null) _avatars.Remove(vm.Id); });
+            }
+            catch { /* initials stay */ }
+        }
+    }
+
+    private void ShowAvatar(ConversationViewModel vm, byte[] bytes)
+    {
+        BitmapImage bmp;
+        try
+        {
+            bmp = new BitmapImage();
+            bmp.BeginInit();
+            bmp.StreamSource = new MemoryStream(bytes);
+            bmp.CacheOption = BitmapCacheOption.OnLoad;
+            bmp.DecodePixelWidth = 96;
+            bmp.EndInit();
+            bmp.Freeze();
+        }
+        catch { return; }   // a photo WPF cannot decode: initials stay
+        Application.Current.Dispatcher.InvokeAsync(() =>
+        {
+            _avatars[vm.Id] = bmp;
+            vm.Avatar = bmp;
+        });
     }
 
     partial void OnFilterChanged(string value) => ConversationsView.Refresh();
@@ -110,9 +263,13 @@ public sealed partial class MainViewModel : ObservableObject
     {
         try
         {
-            var convs = await _session.Client.ConversationsAsync();
-            await Application.Current.Dispatcher.InvokeAsync(() => ApplyConversations(convs));
+            var data = await _session.Client.SidebarAsync();
+            var convs = data.Build();
+            lock (_dataLock) _sidebar = data;
+            await Application.Current.Dispatcher.InvokeAsync(() => ApplyConversations(convs, live: true));
+            ScheduleSave();
             if (Selected is { } sel) await LoadThreadAsync(sel, quiet: true);
+            if (!_prefetched) { _prefetched = true; _ = PrefetchThreadsAsync(convs); }
             await CheckSessionAsync();
         }
         catch (BridgeOfflineException) { /* the monitor reports status */ }
@@ -133,8 +290,10 @@ public sealed partial class MainViewModel : ObservableObject
         catch { /* advisory only */ }
     }
 
-    private void ApplyConversations(IReadOnlyList<Conversation> convs)
+    private void ApplyConversations(IReadOnlyList<Conversation> convs, bool live)
     {
+        lock (_dataLock) _lastConversations = convs;
+        var needFaces = new List<ConversationViewModel>();
         var byId = Conversations.ToDictionary(c => c.Id, StringComparer.Ordinal);
         var next = new List<ConversationViewModel>(convs.Count);
         foreach (var c in convs)
@@ -143,13 +302,15 @@ public sealed partial class MainViewModel : ObservableObject
             else vm = new ConversationViewModel(c);
             vm.LocallySeen = _marks.IsSeen(c.Id, c.LastTime);
             next.Add(vm);
-            if (!_avatars.ContainsKey(c.Id)) _ = LoadAvatarAsync(vm);
-            else vm.Avatar = _avatars[c.Id];
+            if (_avatars.TryGetValue(c.Id, out var face)) { if (face is not null) vm.Avatar = face; }
+            else { _avatars[c.Id] = null; needFaces.Add(vm); }
         }
         // Keep a conversation started from "New message" until the Mac lists it.
         if (Selected is { } sel && !convs.Any(c => c.Id == sel.Id)) next.Insert(0, sel);
         Sync(Conversations, next);
         OnPropertyChanged(nameof(UnreadTotal));
+        if (needFaces.Count > 0) QueueAvatars(needFaces);
+        if (!live) return;   // a snapshot never raises toasts, and the first live load stays quiet too
         Notify(convs);
         _firstLoad = false;
     }
@@ -179,26 +340,6 @@ public sealed partial class MainViewModel : ObservableObject
         }
     }
 
-    private async Task LoadAvatarAsync(ConversationViewModel vm)
-    {
-        _avatars[vm.Id] = null;
-        try
-        {
-            var bytes = await _session.Client.AvatarAsync(vm.Id);
-            if (bytes is null) return;
-            var bmp = new BitmapImage();
-            bmp.BeginInit();
-            bmp.StreamSource = new MemoryStream(bytes);
-            bmp.CacheOption = BitmapCacheOption.OnLoad;
-            bmp.DecodePixelWidth = 96;
-            bmp.EndInit();
-            bmp.Freeze();
-            _avatars[vm.Id] = bmp;
-            vm.Avatar = bmp;
-        }
-        catch { /* initials stay */ }
-    }
-
     partial void OnSelectedChanged(ConversationViewModel? value)
     {
         Messages.Clear();
@@ -208,7 +349,10 @@ public sealed partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(CanCompose));
         if (value is null) return;
         Notifier.Clear(value.Id);
-        _ = LoadThreadAsync(value, quiet: false);
+        IReadOnlyList<Message>? cached;
+        lock (_dataLock) _threadCache.TryGetValue(value.Id, out cached);
+        if (cached is not null) ApplyThread(value, cached);   // instant; the live copy replaces it below
+        _ = LoadThreadAsync(value, quiet: cached is not null);
     }
 
     private async Task LoadThreadAsync(ConversationViewModel conv, bool quiet)
@@ -219,6 +363,7 @@ public sealed partial class MainViewModel : ObservableObject
             IReadOnlyList<Message> msgs = ChatIds.IsValid(conv.Id) && conv.Model.LastTime != DateTimeOffset.MinValue
                 ? await _session.Client.ThreadAsync(conv.Id, ThreadLimit)
                 : [];
+            if (msgs.Count > 0) RememberThread(conv.Id, msgs);
             await Application.Current.Dispatcher.InvokeAsync(() =>
             {
                 if (Selected != conv) return;

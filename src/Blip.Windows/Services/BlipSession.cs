@@ -14,6 +14,9 @@ public sealed class BlipSession : IAsyncDisposable
     public BlipClient Client { get; }
     public BridgeMonitor Monitor { get; }
     public AttachmentCache Cache { get; } = new();
+    public AvatarCache Avatars { get; } = new();
+    /// <summary>The DPAPI-protected startup snapshot, or null when <c>local_cache=off</c>.</summary>
+    public SnapshotStore? Snapshots { get; }
 
     public BlipSession(BridgeConfig config, Func<string, bool> trustNewHostKey)
     {
@@ -27,6 +30,9 @@ public sealed class BlipSession : IAsyncDisposable
         };
         Client = new BlipClient(Transport, config);
         Monitor = new BridgeMonitor(Transport);
+        var store = new SnapshotStore(SnapshotStore.DefaultPath, Dpapi.Protect, Dpapi.Unprotect);
+        if (config.LocalCache) Snapshots = store;
+        else store.Delete();   // turning the option off removes what it stored
     }
 
     public async ValueTask DisposeAsync()

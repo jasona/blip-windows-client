@@ -6,8 +6,9 @@ This is a native Windows client (.NET 10, WPF with the Fluent theme) for the Mac
 from [Blip](https://github.com/nixfred/blip). It reads your conversations, sends texts and
 files, shows attachments, tapbacks, replies and read receipts, and updates in about two
 seconds when a message lands. As with Blip on Linux, the Mac does the iMessage work and
-Windows is a thin client. There's no message cache on Windows, no server on the Mac, and
-nothing changes on the Mac beyond enrolling one more ssh key.
+Windows is a thin client. There's no server on the Mac, and nothing changes on the Mac beyond
+enrolling one more ssh key. The only message text kept on Windows is an optional
+DPAPI-encrypted startup snapshot (see [Startup cache](#startup-cache)).
 
 It lives outside the Blip repository on purpose. The bridge stays upstream, and this client
 pins the bridge contract it was tested against (see [Compatibility](#compatibility)).
@@ -73,7 +74,27 @@ still missing.
 6. Save.
 
 Settings live in `%APPDATA%\Blip\bridge.conf`. It uses the same `key=value` format and keys
-as the Linux `bridge.conf`, plus `port`, `host_key` and `push_read`.
+as the Linux `bridge.conf`, plus `port`, `host_key`, `push_read` and `local_cache`.
+
+### Startup cache
+
+The bridge has no incremental feed (`imsg watch` only says *something* changed), so the
+client makes startup fast locally instead:
+
+- **Photos** are cached in `%LOCALAPPDATA%\Blip\avatars`, named by a hash of the chat id,
+  and refreshed at most once a day. "No photo" is cached too. Each photo costs the Mac a
+  fresh process that scans the address book, so they're fetched two at a time, behind
+  thread loads and image previews.
+- **Snapshot** (`local_cache=on`, the default). The last sidebar and the newest 80 messages
+  of up to 20 recent conversations are saved to `%LOCALAPPDATA%\Blip\snapshot.bin`,
+  encrypted with DPAPI for the current Windows user. The window paints from it at launch,
+  then live data replaces it within a second or two. A snapshot from another Mac or other
+  hide filters is ignored. Turning the option off in Settings deletes the file.
+- **Warm threads.** After the first live load, the newest 8 conversations are fetched one
+  at a time, so opening them is instant. Opening any conversation shows its last known copy
+  at once while the live copy loads.
+
+Deleting any of these files is always safe: everything comes back from the Mac.
 
 ## Build, test, run
 
@@ -113,7 +134,8 @@ They skip themselves unless the stub's environment variables are set.
 | Send | Text (Enter; Shift+Enter for a newline), files by button, drag and drop or Ctrl+V (images and copied files), caption with the last file, SMS/RCS chosen by the same rules as Linux (`SendServiceSelector`), groups by their AppleScript GUID, new conversation to a number or email |
 | Live | Push within ~2 s, toasts for new messages (one per conversation, click to open; muted conversations stay quiet), tray icon with unread count, close-to-tray |
 | Opt-in | Tapbacks and threaded replies (right-click a bubble). These drive Messages through Accessibility, so they're off by default as on Linux. Mark-read-on-open (`push_read`) brings Messages to the front on the Mac, so it's off by default too, and opening a conversation clears its dot locally only. |
-| Safety | Host key pinning, a confined key, text on stdin only, no message text written to disk, Mark-of-the-Web on every downloaded attachment, and program files (`.exe`, `.lnk`, `.js`, …) shown in Explorer but never launched |
+| Startup | Opens from an encrypted snapshot, cached photos and prefetched threads, then refreshes live ([Startup cache](#startup-cache)) |
+| Safety | Host key pinning, a confined key, text on stdin only, message text on disk only DPAPI-encrypted (and only with `local_cache`), Mark-of-the-Web on every downloaded attachment, and program files (`.exe`, `.lnk`, `.js`, …) shown in Explorer but never launched |
 
 ### Not yet
 

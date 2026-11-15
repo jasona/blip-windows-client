@@ -16,6 +16,7 @@ public partial class App : Application
     private Forms.NotifyIcon? _tray;
     private BlipSession? _session;
     private MainWindow? _main;
+    private MainViewModel? _vm;
     private bool _quitting;
 
     /// <summary>Trust-on-first-use for the Mac's host key. Called on SSH.NET's thread.</summary>
@@ -72,6 +73,7 @@ public partial class App : Application
             return;
         }
         var vm = new MainViewModel(_session);
+        _vm = vm;
         vm.PropertyChanged += (_, a) => { if (a.PropertyName == nameof(MainViewModel.UnreadTotal)) UpdateTray(vm.UnreadTotal); };
         _main = new MainWindow(vm);
         _main.Closing += (_, a) =>
@@ -92,6 +94,7 @@ public partial class App : Application
     private async Task RestartSessionAsync()
     {
         var old = _session;
+        _vm?.SaveSnapshot();
         _quitting = true;
         _main?.Close();
         _quitting = false;
@@ -143,6 +146,7 @@ public partial class App : Application
 
     private async void Quit()
     {
+        _vm?.SaveSnapshot();
         _quitting = true;
         _main?.Close();
         if (_tray is not null) { _tray.Visible = false; _tray.Dispose(); }

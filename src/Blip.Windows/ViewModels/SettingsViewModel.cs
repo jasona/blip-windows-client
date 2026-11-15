@@ -19,6 +19,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _replies;
     [ObservableProperty] private bool _preferIMessage;
     [ObservableProperty] private bool _pushRead;
+    [ObservableProperty] private bool _localCache;
     [ObservableProperty] private string _hostKey;
     [ObservableProperty] private string _publicKey = "";
     [ObservableProperty] private string _macCommand = "";
@@ -28,7 +29,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     public SettingsViewModel(BridgeConfig c)
     {
         _host = c.Host; _port = c.Port; _keyPath = c.KeyPath; _hideSpam = c.HideSpam; _hideUnknown = c.HideUnknown;
-        _tapbacks = c.Tapbacks; _replies = c.Replies; _preferIMessage = c.PreferIMessage; _pushRead = c.PushRead;
+        _tapbacks = c.Tapbacks; _replies = c.Replies; _preferIMessage = c.PreferIMessage; _pushRead = c.PushRead; _localCache = c.LocalCache;
         _hostKey = c.HostKey;
         RefreshPublicKey();
     }
@@ -37,7 +38,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     {
         Host = Host.Trim(), Port = Port, KeyPath = KeyPath.Trim(), HostKey = HostKey.Trim(),
         HideSpam = HideSpam, HideUnknown = HideUnknown, Tapbacks = Tapbacks, Replies = Replies,
-        PreferIMessage = PreferIMessage, PushRead = PushRead,
+        PreferIMessage = PreferIMessage, PushRead = PushRead, LocalCache = LocalCache,
     };
 
     partial void OnKeyPathChanged(string value) => RefreshPublicKey();

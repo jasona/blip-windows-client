@@ -67,15 +67,19 @@ public sealed class BlipClient(IBridgeTransport transport, BridgeConfig config)
     public Task<SessionInfo> SessionAsync(CancellationToken ct = default) =>
         QueryJsonAsync(BlipJson.Default.SessionInfo, ["--json", "session"], null, ct);
 
-    /// <summary>The sidebar: chats + read-state + groups, fetched in parallel (the serve pool has two channels).</summary>
-    public async Task<IReadOnlyList<Conversation>> ConversationsAsync(CancellationToken ct = default)
+    /// <summary>The sidebar's raw inputs: chats + read-state + groups, fetched in parallel (the serve pool has two channels).</summary>
+    public async Task<SidebarData> SidebarAsync(CancellationToken ct = default)
     {
         var chats = ChatsAsync(ct: ct);
         var read = ReadStateAsync(ct);
         var groups = GroupsAsync(ct);
         await Task.WhenAll(chats, read, groups).ConfigureAwait(false);
-        return ConversationList.Build(chats.Result, read.Result, groups.Result);
+        return new SidebarData(chats.Result, read.Result, groups.Result);
     }
+
+    /// <summary>The sidebar, built.</summary>
+    public async Task<IReadOnlyList<Conversation>> ConversationsAsync(CancellationToken ct = default) =>
+        (await SidebarAsync(ct).ConfigureAwait(false)).Build();
 
     /// <summary>One conversation, oldest → newest, with tapbacks, replies, attachments and receipts folded in.</summary>
     public async Task<IReadOnlyList<Message>> ThreadAsync(string chat, int limit = 80, CancellationToken ct = default)
@@ -194,13 +198,22 @@ public sealed class BlipClient(IBridgeTransport transport, BridgeConfig config)
     }
 
     /// <summary>A contact photo (DM) or a group's own photo, as JPEG; null when there is none.</summary>
-    public async Task<byte[]?> AvatarAsync(string chatOrHandle, CancellationToken ct = default)
+    public async Task<byte[]?> AvatarAsync(string chatOrHandle, CancellationToken ct = default) =>
+        (await AvatarLookupAsync(chatOrHandle, ct).ConfigureAwait(false)).Bytes;
+
+    /// <summary>
+    /// A contact or group photo, telling "the Mac has none" (<c>imsg avatar</c> exits 1:
+    /// <see cref="AvatarLookup.Known"/> with null bytes, safe to cache) apart from "could not ask"
+    /// (any other status: not known, do not cache).
+    /// </summary>
+    public async Task<AvatarLookup> AvatarLookupAsync(string chatOrHandle, CancellationToken ct = default)
     {
         RequireValidChat(chatOrHandle);
         string[] args = ChatIds.IsGroupChat(chatOrHandle) ? ["avatar", "--chat", chatOrHandle] : ["avatar", "--", chatOrHandle];
         using var ms = new MemoryStream();
         var r = await transport.StreamAsync(BridgeTool.Imsg, args, ms, 8 << 20, ct).ConfigureAwait(false);
-        return r.Ok && ms.Length > 0 ? ms.ToArray() : null;
+        if (r.Ok && ms.Length > 0) return new AvatarLookup(true, ms.ToArray());
+        return new AvatarLookup(r.Status is 0 or 1, null);
     }
 
     // ------------------------------------------------------------ helpers
@@ -247,3 +260,12 @@ public sealed class BlipClient(IBridgeTransport transport, BridgeConfig config)
         if (!ChatIds.IsValid(chat)) throw new ArgumentException("not a chat id the bridge accepts", nameof(chat));
     }
 }
+
+/// <summary>The three reads behind the sidebar, kept raw so they can be snapshotted and rebuilt.</summary>
+public sealed record SidebarData(IReadOnlyList<ChatInfo> Chats, ReadStateSnapshot ReadState, IReadOnlyList<GroupInfo> Groups)
+{
+    public IReadOnlyList<Conversation> Build() => ConversationList.Build(Chats, ReadState, Groups);
+}
+
+/// <param name="Known">The Mac answered: <paramref name="Bytes"/> is the photo, or null for none.</param>
+public readonly record struct AvatarLookup(bool Known, byte[]? Bytes);

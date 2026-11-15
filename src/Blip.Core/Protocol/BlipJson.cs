@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Blip.Core.Cache;
 using Blip.Core.Transport;
 
 namespace Blip.Core.Protocol;
@@ -14,6 +15,7 @@ namespace Blip.Core.Protocol;
 [JsonSerializable(typeof(List<Message>))]
 [JsonSerializable(typeof(ReadStateSnapshot))]
 [JsonSerializable(typeof(SessionInfo))]
+[JsonSerializable(typeof(Snapshot))]
 public partial class BlipJson : JsonSerializerContext;
 
 [JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.SnakeCaseLower)]

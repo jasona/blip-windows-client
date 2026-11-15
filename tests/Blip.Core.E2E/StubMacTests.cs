@@ -66,6 +66,17 @@ public class StubMacTests
     }
 
     [E2EFact]
+    public async Task Avatar_without_a_contact_card_is_a_known_none()
+    {
+        // The stub Mac has no address book, so the real imsg avatar exits 1: cacheable "no photo".
+        await using var t = Transport();
+        var c = new BlipClient(t, Cfg());
+        var dm = await c.AvatarLookupAsync("+15550100011");
+        Assert.True(dm.Known);
+        Assert.Null(dm.Bytes);
+    }
+
+    [E2EFact]
     public async Task Attachment_bytes_stream_intact()
     {
         await using var t = Transport();

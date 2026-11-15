@@ -36,6 +36,12 @@ public sealed partial record BridgeConfig
     /// which is why the Linux client defaults to off as well.
     /// </summary>
     public bool PushRead { get; init; }
+    /// <summary>
+    /// Keep an encrypted snapshot of the sidebar and recent threads on this PC so the window
+    /// opens instantly (Windows-only key). The app encrypts it with DPAPI for the current
+    /// Windows user; turning it off deletes the file.
+    /// </summary>
+    public bool LocalCache { get; init; } = true;
 
     public static string DefaultKeyPath =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".ssh", "blip_ed25519");
@@ -98,6 +104,7 @@ public sealed partial record BridgeConfig
                 "replies" => c with { Replies = Truthy(v) },
                 "prefer_imessage" => c with { PreferIMessage = Truthy(v) },
                 "push_read" => c with { PushRead = Truthy(v) },
+                "local_cache" => c with { LocalCache = Truthy(v) },
                 _ => c,
             };
         }
@@ -119,6 +126,7 @@ public sealed partial record BridgeConfig
         sb.AppendLine($"replies={B(Replies)}");
         sb.AppendLine($"prefer_imessage={B(PreferIMessage)}");
         sb.AppendLine($"push_read={B(PushRead)}");
+        sb.AppendLine($"local_cache={B(LocalCache)}");
         return sb.ToString();
     }
 
