@@ -1,0 +1,36 @@
+[
+  {
+    "id": "+15550100011",
+    "name": null,
+    "service": "iMessage",
+    "messages": 4,
+    "last": "2026-05-09T06:15:20Z",
+    "last_text": "unread one",
+    "last_from_me": false,
+    "last_handle": "+15550100011",
+    "last_name": null,
+    "last_attachment": null,
+    "pinned": false,
+    "pin_order": null,
+    "pin_name": null,
+    "muted": false,
+    "aliases": []
+  },
+  {
+    "id": "chat900000000000000001",
+    "name": "Trail Crew",
+    "service": "iMessage",
+    "messages": 1,
+    "last": "2026-05-09T06:13:50Z",
+    "last_text": "group msg",
+    "last_from_me": false,
+    "last_handle": "+15550100022",
+    "last_name": null,
+    "last_attachment": null,
+    "pinned": false,
+    "pin_order": null,
+    "pin_name": null,
+    "muted": false,
+    "aliases": []
+  }
+]

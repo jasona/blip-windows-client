@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Blip.Core/Blip.Core.csproj" />
+    <Project Path="src/Blip.Windows/Blip.Windows.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Blip.Core.E2E/Blip.Core.E2E.csproj" />
+    <Project Path="tests/Blip.Core.Tests/Blip.Core.Tests.csproj" />
+  </Folder>
+</Solution>

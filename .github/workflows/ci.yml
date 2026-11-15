@@ -1,0 +1,27 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: "10.0.x" }
+      - run: dotnet build -c Release
+      - run: dotnet test tests/Blip.Core.Tests -c Release --no-build
+  e2e:
+    # Real SSH, real blip-dispatch + imsg, stub Mac (no AppleScript off a Mac).
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with: { repository: nixfred/blip, ref: 63f42e1, path: blip }
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: "10.0.x" }
+      - run: sudo apt-get install -y openssh-server
+      - run: sudo tests/e2e/setup-stub-mac.sh "$PWD/blip"
+      - run: |
+          eval "$(sudo tests/e2e/setup-stub-mac.sh --env)"
+          sudo chmod 644 "$BLIP_E2E_KEY"   # the runner user reads the test key
+          sudo chmod o+rw "$BLIP_E2E_CHATDB" "$(dirname "$BLIP_E2E_CHATDB")"
+          dotnet test tests/Blip.Core.E2E

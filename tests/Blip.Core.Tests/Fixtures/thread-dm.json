@@ -1,0 +1,61 @@
+[
+  {
+    "id": 10,
+    "ts": "2026-05-09T06:13:20Z",
+    "from_me": false,
+    "handle": "+15550100011",
+    "name": null,
+    "service": "iMessage",
+    "chat": "+15550100011",
+    "text": "hello there",
+    "read": true,
+    "tapback": false,
+    "error": 0,
+    "guid": "g10",
+    "attachments": [
+      {
+        "id": "30",
+        "name": "photo.png",
+        "mime": "image/png",
+        "bytes": 800
+      }
+    ]
+  },
+  {
+    "id": 11,
+    "ts": "2026-05-09T06:14:20Z",
+    "from_me": true,
+    "handle": null,
+    "name": null,
+    "service": "iMessage",
+    "chat": "+15550100011",
+    "text": "hi back",
+    "read": true,
+    "tapback": false,
+    "error": 0,
+    "guid": "g11",
+    "activity_ts": "2026-05-09T06:14:50Z",
+    "tapbacks": [
+      {
+        "emoji": "❤️",
+        "from_me": false,
+        "by": "+15550100011"
+      }
+    ],
+    "delivered": true
+  },
+  {
+    "id": 12,
+    "ts": "2026-05-09T06:15:20Z",
+    "from_me": false,
+    "handle": "+15550100011",
+    "name": null,
+    "service": "iMessage",
+    "chat": "+15550100011",
+    "text": "unread one",
+    "read": false,
+    "tapback": false,
+    "error": 0,
+    "guid": "g12"
+  }
+]
