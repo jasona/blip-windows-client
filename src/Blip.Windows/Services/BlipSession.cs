@@ -31,7 +31,7 @@ public sealed class BlipSession : IAsyncDisposable
         Client = new BlipClient(Transport, config);
         Monitor = new BridgeMonitor(Transport);
         var store = new SnapshotStore(SnapshotStore.DefaultPath, Dpapi.Protect, Dpapi.Unprotect);
-        if (config.LocalCache) Snapshots = store;
+        if (config.LocalCache && Dpapi.Available) Snapshots = store;
         else store.Delete();   // turning the option off removes what it stored
     }
 

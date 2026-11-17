@@ -2,7 +2,7 @@
 
 iMessage on Windows, through the Blip bridge on your Mac.
 
-This is a native Windows client (.NET 10, WPF with the Fluent theme) for the Mac-side bridge
+This is a native Windows client (.NET 10, Avalonia with the Fluent theme) for the Mac-side bridge
 from [Blip](https://github.com/nixfred/blip). It reads your conversations, sends texts and
 files, shows attachments, tapbacks, replies and read receipts, and updates in about two
 seconds when a message lands. As with Blip on Linux, the Mac does the iMessage work and
@@ -18,7 +18,7 @@ pins the bridge contract it was tested against (see [Compatibility](#compatibili
 ```
  Windows (this app)                                   Mac (Blip bridge, unchanged)
  ┌───────────────────────────┐   one SSH connection   ┌──────────────────────────────────┐
- │ Blip.Windows (WPF)        │   many channels        │ authorized_keys:                 │
+ │ Blip.Windows (Avalonia)   │   many channels        │ authorized_keys:                 │
  │  └ Blip.Core              │ ─────────────────────▶ │  restrict,command="…/blip-       │
  │     ├ SshBridgeTransport  │  imsg serve  ×2 (pool) │  dispatch" <this key>            │
  │     │  (SSH.NET, pinned   │  imsg watch  (push)    │      │                           │
@@ -103,6 +103,7 @@ Requires the .NET 10 SDK.
 ```powershell
 dotnet build                     # whole solution (also builds on Linux/macOS for CI)
 dotnet test tests/Blip.Core.Tests
+dotnet test tests/Blip.Ui.Tests  # headless Avalonia + Skia, writes screenshots to $BLIP_UI_SHOTS
 dotnet run --project src/Blip.Windows
 # a single self-contained exe:
 dotnet publish src/Blip.Windows -c Release -r win-x64 --self-contained -p:PublishSingleFile=true
@@ -123,14 +124,32 @@ dotnet test tests/Blip.Core.E2E
 ```
 
 Never point the E2E tests at a real Mac, because the send tests would send real messages.
-They skip themselves unless the stub's environment variables are set.
+They skip themselves unless the stub's environment variables are set. With the same
+environment, `tests/Blip.Ui.Tests` also drives the real main and settings windows against the
+stub Mac and saves a screenshot of each screen.
+
+### Why Avalonia, and how emoji work
+
+WPF draws colour fonts in monochrome, so emoji came out black and white. Avalonia renders
+through Skia, which draws Segoe UI Emoji (COLR) and Noto Color Emoji (CBDT) in colour,
+including in text boxes. Two details make that hold everywhere:
+
+- Font fallback takes the first font that has a glyph. Inter, like most text fonts, carries
+  monochrome ❤ ‼ ▶ ☀ ⚠ and a few others, so the UI font is **Blip Inter**
+  (`Assets/Fonts`, built by `tools/make_text_font.py`, SIL OFL), Inter without those
+  codepoints. Anything it lacks falls back to the colour emoji font. The same font is used on
+  every OS, so the app looks the same in CI screenshots and on Windows.
+- Avalonia keeps the fallback font running across the following whitespace, and emoji fonts
+  have an emoji-wide space. `EmojiTextPresenter` (used by every TextBox via the template in
+  `App.axaml`) ends the fallback run at that space, and `EmojiText` does the same split for
+  read-only text.
 
 ## What works
 
 | | |
 |---|---|
 | Conversation list | Every conversation, Messages' pins first in Messages' order, unread dots from the Mac's own read state (shared with your iPhone and the Linux client), contact and group photos, re-keyed groups folded into one |
-| Thread | Text with colour emoji (Emoji.Wpf: WPF itself only draws monochrome emoji), inline image previews (HEIC converted on the Mac), file chips, tapbacks, inline-reply quotes, edited and unsent markers, send effects, link titles, "Read 4:42 PM" / "Delivered", failed-delivery flags. Your bubbles are green only for RCS; iMessage and SMS draw blue (display only: SMS threads still send as SMS) |
+| Thread | Text with colour emoji (selectable, and in colour while typing too), inline image previews (HEIC converted on the Mac), file chips, tapbacks, inline-reply quotes, edited and unsent markers, send effects, link titles, "Read 4:42 PM" / "Delivered", failed-delivery flags. Your bubbles are green only for RCS; iMessage and SMS draw blue (display only: SMS threads still send as SMS) |
 | Send | Text (Enter; Shift+Enter for a newline), files by button, drag and drop or Ctrl+V (images and copied files), caption with the last file, SMS/RCS chosen by the same rules as Linux (`SendServiceSelector`), groups by their AppleScript GUID, new conversation to a number or email |
 | Live | Push within ~2 s, toasts for new messages (one per conversation, click to open; muted conversations stay quiet), tray icon with unread count, close-to-tray |
 | Opt-in | Tapbacks and threaded replies (right-click a bubble). These drive Messages through Accessibility, so they're off by default as on Linux. Mark-read-on-open (`push_read`) brings Messages to the front on the Mac, so it's off by default too, and opening a conversation clears its dot locally only. |
@@ -139,6 +158,8 @@ They skip themselves unless the stub's environment variables are set.
 
 ### Not yet
 
+- Spell check in the message box. WPF used the Windows spell checker; Avalonia has none
+  built in.
 - Message search UI. `BlipClient.SearchAsync` exists, but there's no screen for it yet.
 - Playing voice messages. iPhone audio is CAF, which Windows can't play by default; Linux
   re-encodes it with ffmpeg. For now it opens in your default app.
@@ -157,8 +178,10 @@ the real tools, so rerun both after updating the Mac side.
 
 ```
 src/Blip.Core        transport, wire models, client API, push monitor, attachment cache (net10.0, cross-platform)
-src/Blip.Windows     the WPF app
+src/Blip.Windows     the Avalonia app (Windows: toasts, DPAPI, tray; builds and runs headless on Linux)
 tests/Blip.Core.Tests   unit + contract tests (no network)
 tests/Blip.Core.E2E     real SSH against a stub Mac
+tests/Blip.Ui.Tests     headless UI tests and screenshots, against the stub Mac
+tools                   font build script
 tests/e2e               stub-Mac setup script, synthetic chat.db, send stub
 ```

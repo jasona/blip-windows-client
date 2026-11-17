@@ -1,4 +1,4 @@
-using System.Windows.Media.Imaging;
+using Avalonia.Media.Imaging;
 using Blip.Core;
 using Blip.Core.Cache;
 using Blip.Core.Protocol;
@@ -14,7 +14,7 @@ public sealed partial class AttachmentViewModel : ObservableObject
     private readonly BlipClient _client;
     private readonly AttachmentCache _cache;
 
-    [ObservableProperty] private BitmapImage? _image;
+    [ObservableProperty] private Bitmap? _image;
     [ObservableProperty] private string _status = "";
 
     public AttachmentViewModel(AttachmentMeta meta, BlipClient client, AttachmentCache cache)
@@ -27,7 +27,7 @@ public sealed partial class AttachmentViewModel : ObservableObject
     public string Detail => Formatting.Size(_meta.Bytes);
     public bool IsImage => _meta.IsImage && _meta.Id is not null && _meta.Sticker is null;
     public bool IsChip => !IsImage;
-    public string Glyph => _meta.IsAudio ? "" : _meta.IsImage ? "" : "";
+    public string Glyph => _meta.IsAudio ? "🎵" : _meta.IsImage ? "🖼️" : "📄";
 
     private async Task LoadPreviewAsync()
     {
@@ -36,14 +36,10 @@ public sealed partial class AttachmentViewModel : ObservableObject
             var path = await _cache.GetAsync(_meta.Id!, _meta.Name, PreviewDim,
                 async (s, ct) => (await _client.FetchAttachmentAsync(_meta.Id!, s, PreviewDim, ct: ct)).Ok);
             if (path is null) { Status = "preview unavailable"; return; }
-            var bmp = new BitmapImage();
-            bmp.BeginInit();
-            bmp.CacheOption = BitmapCacheOption.OnLoad;   // do not hold the file open
-            bmp.UriSource = new Uri(path);
-            bmp.DecodePixelWidth = 320;
-            bmp.EndInit();
-            bmp.Freeze();
-            Image = bmp;
+            // Decode from memory so the cache file is not held open.
+            var bytes = await File.ReadAllBytesAsync(path);
+            var bmp = await Task.Run(() => Bitmap.DecodeToWidth(new MemoryStream(bytes), 640));
+            await Services.Ui.InvokeAsync(() => Image = bmp);
         }
         catch (Exception e)
         {

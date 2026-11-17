@@ -3,6 +3,7 @@ using Blip.Core.Cache;
 using Blip.Core.Logic;
 using Blip.Core.Protocol;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 
 namespace Blip.Windows.ViewModels;
 
@@ -21,6 +22,10 @@ public sealed partial class MessageViewModel : ObservableObject
     [ObservableProperty] private string _dayHeader = "";
 
     public IReadOnlyList<AttachmentViewModel> Attachments { get; }
+    public bool HasAttachments => Attachments.Count > 0;
+
+    /// <summary>The window's view model: the bubble's context menu runs its commands.</summary>
+    public MainViewModel? Owner { get; init; }
 
     public MessageViewModel(Message m, BlipClient client, AttachmentCache cache, bool isGroup, string? pendingKey = null)
     {
@@ -38,6 +43,23 @@ public sealed partial class MessageViewModel : ObservableObject
     public bool IsMine => Model.FromMe;
     public BubbleKind Kind => !IsMine ? BubbleKind.Theirs
         : SendServiceSelector.IsGreen(Model.Service) ? BubbleKind.MineGreen : BubbleKind.MineBlue;
+    public bool IsTheirs => Kind == BubbleKind.Theirs;
+    public bool IsBlue => Kind == BubbleKind.MineBlue;
+    public bool IsGreenBubble => Kind == BubbleKind.MineGreen;
+    public bool TapbacksEnabled => Owner?.TapbacksEnabled == true;
+    public bool RepliesEnabled => Owner?.RepliesEnabled == true;
+
+    [RelayCommand] private void Copy() => Owner?.CopyTextCommand.Execute(this);
+    [RelayCommand] private void Reply() => Owner?.ReplyToCommand.Execute(this);
+    [RelayCommand] private Task React(string kind) => Owner?.ReactToAsync(this, kind) ?? Task.CompletedTask;
+
+    /// <summary>Only web links: a message can carry any URI scheme.</summary>
+    [RelayCommand]
+    private void OpenLink()
+    {
+        if (Uri.TryCreate(LinkUrl, UriKind.Absolute, out var u) && u.Scheme is "http" or "https")
+            try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(u.AbsoluteUri) { UseShellExecute = true }); } catch { }
+    }
 
     /// <summary>Text minus the object-replacement chars Messages leaves where attachments sat.</summary>
     public string Text => Model.Retracted == true ? "" : Model.Text.Replace("￼", "").Trim();

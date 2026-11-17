@@ -36,10 +36,16 @@ rows = [  # rowid, guid, date, text, from_me, read, handle, chat, assoc_type, as
     (13, "g13", B + 90*S, "Loved “hi back”", 0, 1, 1, 1, 2000, "p:0/g11"),
     (12, "g12", B + 120*S, "unread one", 0, 0, 1, 1, 0, None),
     (20, "g20", B + 30*S, "group msg", 0, 1, 2, 2, 0, None),
+    # Emoji and services for the UI screenshots: ZWJ families, skin tones, flags, keycaps, VS16 hearts.
+    (21, "g21", B + 200*S, "made it 🎉🥳 the view is unreal 🏔️", 0, 1, 1, 2, 0, None),
+    (22, "g22", B + 210*S, "😂😂 love it ❤️ 👍🏽 👨‍👩‍👧 🇨🇦 #️⃣ 1️⃣\nsecond line stays a line", 1, 1, 0, 2, 0, None),
+    (23, "g23", B + 220*S, "sent over RCS 🔥", 1, 1, 0, 2, 0, None),
+    (24, "g24", B + 230*S, "sent over SMS ✅ (draws blue)", 1, 1, 0, 2, 0, None),
 ]
+SERVICE = {23: "RCS", 24: "SMS"}
 for mid, guid, d, t, fm, rd, h, c, at, ag in rows:
     con.execute("""INSERT INTO message (ROWID,guid,date,text,is_from_me,is_read,handle_id,service,
                    associated_message_type,associated_message_guid,cache_has_attachments)
-                   VALUES (?,?,?,?,?,?,?,'iMessage',?,?,?)""", (mid, guid, d, t, fm, rd, h, at, ag, 1 if mid == 10 else 0))
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?)""", (mid, guid, d, t, fm, rd, h, SERVICE.get(mid, "iMessage"), at, ag, 1 if mid == 10 else 0))
     con.execute("INSERT INTO chat_message_join VALUES (?,?,?)", (c, mid, d))
 con.commit()
