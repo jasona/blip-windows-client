@@ -37,7 +37,7 @@ public sealed partial class MessageViewModel : ObservableObject
     public bool IsGroup { get; }
     public bool IsMine => Model.FromMe;
     public BubbleKind Kind => !IsMine ? BubbleKind.Theirs
-        : SendServiceSelector.Normalize(Model.Service) == SendService.IMessage ? BubbleKind.MineBlue : BubbleKind.MineGreen;
+        : SendServiceSelector.IsGreen(Model.Service) ? BubbleKind.MineGreen : BubbleKind.MineBlue;
 
     /// <summary>Text minus the object-replacement chars Messages leaves where attachments sat.</summary>
     public string Text => Model.Retracted == true ? "" : Model.Text.Replace("￼", "").Trim();

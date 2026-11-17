@@ -109,4 +109,14 @@ public class ConversationListTests
         Assert.Equal("Trail Crew", list[1].Title);
         Assert.Equal("iMessage;+;chat900000000000000001", list[1].GroupGuid);
     }
+
+    [Theory]
+    [InlineData("RCS", true)]
+    [InlineData("rcs", true)]
+    [InlineData("SMS", false)]
+    [InlineData("iMessage", false)]
+    [InlineData("", false)]
+    [InlineData(null, false)]
+    public void Only_rcs_draws_green(string? service, bool green) =>
+        Assert.Equal(green, SendServiceSelector.IsGreen(service));
 }

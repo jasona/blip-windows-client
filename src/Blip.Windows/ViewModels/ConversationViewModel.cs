@@ -19,7 +19,7 @@ public sealed partial class ConversationViewModel(Conversation model) : Observab
     public bool Muted => Model.Muted;
     public string Initials => Formatting.Initials(Model.Title);
     public string Color => Formatting.ColorFor(Model.Id);
-    public bool IsGreen => !Model.IsGroup && SendServiceSelector.Normalize(Model.Service) != SendService.IMessage;
+    public bool IsGreen => !Model.IsGroup && SendServiceSelector.IsGreen(Model.Service);
     public string Subtitle => Model.IsGroup
         ? string.Join(", ", Model.Participants.Select(p => p.Name))
         : Model.Id.Contains('@') ? Model.Id : ChatIds.Pretty(Model.Id);

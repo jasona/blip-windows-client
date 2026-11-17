@@ -14,6 +14,13 @@ public static class SendServiceSelector
         _ => SendService.IMessage,
     };
 
+    /// <summary>
+    /// Bubble colour: green only for a message the Mac recorded as RCS. iMessage and SMS
+    /// (including unknown or missing service) draw blue. A deliberate departure from
+    /// Messages, which greens SMS too. Display only; never changes which service a send uses.
+    /// </summary>
+    public static bool IsGreen(string? service) => Normalize(service) == SendService.RCS;
+
     public static string Wire(this SendService s) => s switch
     {
         SendService.SMS => "SMS",

@@ -130,7 +130,7 @@ They skip themselves unless the stub's environment variables are set.
 | | |
 |---|---|
 | Conversation list | Every conversation, Messages' pins first in Messages' order, unread dots from the Mac's own read state (shared with your iPhone and the Linux client), contact and group photos, re-keyed groups folded into one |
-| Thread | Text, inline image previews (HEIC converted on the Mac), file chips, tapbacks, inline-reply quotes, edited and unsent markers, send effects, link titles, "Read 4:42 PM" / "Delivered", failed-delivery flags |
+| Thread | Text, inline image previews (HEIC converted on the Mac), file chips, tapbacks, inline-reply quotes, edited and unsent markers, send effects, link titles, "Read 4:42 PM" / "Delivered", failed-delivery flags. Your bubbles are green only for RCS; iMessage and SMS draw blue (display only: SMS threads still send as SMS) |
 | Send | Text (Enter; Shift+Enter for a newline), files by button, drag and drop or Ctrl+V (images and copied files), caption with the last file, SMS/RCS chosen by the same rules as Linux (`SendServiceSelector`), groups by their AppleScript GUID, new conversation to a number or email |
 | Live | Push within ~2 s, toasts for new messages (one per conversation, click to open; muted conversations stay quiet), tray icon with unread count, close-to-tray |
 | Opt-in | Tapbacks and threaded replies (right-click a bubble). These drive Messages through Accessibility, so they're off by default as on Linux. Mark-read-on-open (`push_read`) brings Messages to the front on the Mac, so it's off by default too, and opening a conversation clears its dot locally only. |
