@@ -29,6 +29,7 @@ jobs:
           eval "$(sudo tests/e2e/setup-stub-mac.sh --env)"
           sudo chmod 644 "$BLIP_E2E_KEY"   # the runner user reads the test key
           sudo chmod o+rw "$BLIP_E2E_CHATDB" "$(dirname "$BLIP_E2E_CHATDB")"
+          d=$(dirname "$BLIP_E2E_CHATDB"); while [ "$d" != / ]; do sudo chmod o+x "$d"; d=$(dirname "$d"); done   # useradd -m homes are 750
           dotnet test tests/Blip.Core.E2E
           BLIP_UI_SHOTS="$PWD/shots" dotnet test tests/Blip.Ui.Tests
       - uses: actions/upload-artifact@v4
