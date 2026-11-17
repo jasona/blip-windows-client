@@ -429,8 +429,10 @@
                          HorizontalAlignment="Center" />
             </StackPanel>
 
-            <ScrollViewer x:Name="ThreadScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,6,0,10">
-              <ItemsControl ItemsSource="{Binding Messages}">
+            <!-- No Padding on this ScrollViewer: Avalonia leaves it out of the extent, which hid the
+                 newest bubble's last 16 px (its receipt line) under the composer. Margin the items instead. -->
+            <ScrollViewer x:Name="ThreadScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+              <ItemsControl ItemsSource="{Binding Messages}" Margin="0,6,0,12">
                 <ItemsControl.ItemTemplate>
                   <DataTemplate>
                     <StackPanel Classes="msg" Classes.start="{Binding GroupStart}">

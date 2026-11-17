@@ -105,12 +105,17 @@ public class UiTests
         {
             for (var i = 0; i < 3; i++) { w.UpdateLayout(); Shots.Pump(); }
             Assert.True(scroll.Extent.Height > scroll.Viewport.Height, $"{when}: thread does not scroll, so the check proves nothing");
-            Assert.True(scroll.Offset.Y + scroll.Viewport.Height >= scroll.Extent.Height - 1,
-                $"{when}: bottom clipped by {scroll.Extent.Height - scroll.Offset.Y - scroll.Viewport.Height:F0} px");
+            // Measure what is drawn, not the scroll numbers: the newest row's bottom edge, inside the
+            // scroll viewer, must be within its visible height.
+            var rows = scroll.GetVisualDescendants().OfType<StackPanel>().Where(p => p.Classes.Contains("msg")).ToList();
+            var last = rows.OrderBy(r => r.TranslatePoint(default, scroll)!.Value.Y).Last();
+            var bottom = last.TranslatePoint(new Point(0, last.Bounds.Height), scroll)!.Value.Y;
+            Assert.True(bottom <= scroll.Bounds.Height + 0.5, $"{when}: newest message clipped by {bottom - scroll.Bounds.Height:F0} px");
         }
         w.Height = 500;   // MinHeight
         vm.ComposerText = string.Join("\n", Enumerable.Range(1, 8).Select(i => $"line {i}"));
         AssertAtBottom("after the window shrank and the composer grew");
+        Shots.Capture(w, "clip-check");
         vm.ComposerText = "";
         w.Height = 720;
         Shots.Pump();
