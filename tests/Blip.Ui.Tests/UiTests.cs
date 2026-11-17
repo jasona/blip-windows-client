@@ -138,11 +138,41 @@ public class UiTests
         vm.Selected = vm.Conversations.Single(c => c.Id == "+15550100011");
         await Shots.Settle(() => vm.Messages.Any(m => m.Text == "unread one") && !vm.IsLoadingThread);
         // The stub's photo is not a real image: the bubble must say so instead of staying blank.
-        var photo = vm.Messages.SelectMany(m => m.Attachments).Single(a => a.IsImage);
+        var photo = vm.Messages.SelectMany(m => m.Attachments).Single(a => a.Name == "photo.png");
         await Shots.Settle(() => photo.Status.Length > 0 || photo.Image is not null);
         Assert.Null(photo.Image);
         Assert.Equal("preview unavailable", photo.Status);
+        // A real photo, stored sideways with EXIF Orientation 6 as an iPhone does: it must stand upright.
+        var real = vm.Messages.SelectMany(m => m.Attachments).Single(a => a.Name == "IMG_0042.jpeg");
+        await Shots.Settle(() => real.Image is not null);
+        Assert.True(real.Image!.PixelSize.Width > real.Image.PixelSize.Height, $"photo drawn {real.Image.PixelSize}, not upright");
         Shots.Capture(w, "main-dark-dm");
+
+        // A click on a photo opens the viewer inside the window, with the large copy.
+        var thumb = w.GetVisualDescendants().OfType<Button>().Single(b => b.DataContext == real && b.Classes.Contains("plain"));
+        thumb.Command!.Execute(thumb.CommandParameter);
+        await Shots.Settle(() => real.FullImage is not null);
+        Assert.Same(real, vm.Viewing);
+        Assert.Equal(new PixelSize(1600, 1200), real.FullImage!.PixelSize);
+        Assert.False(vm.HasPreviousImage || vm.HasNextImage);   // the broken one is not a stop
+        Assert.True(w.FindControl<Panel>("Viewer")!.IsVisible);
+        Shots.Capture(w, "viewer");
+        w.KeyPress(Key.Escape, RawInputModifiers.None, PhysicalKey.Escape, null);
+        Shots.Pump();
+        Assert.False(vm.IsViewing);
+        // A click on the dark surround closes it too; a click on the photo does not.
+        vm.ViewImageCommand.Execute(real);
+        Shots.Pump();
+        var shown = w.FindControl<Image>("ViewerImage")!;
+        var onPhoto = shown.TranslatePoint(new Point(shown.Bounds.Width / 2, shown.Bounds.Height / 2), w)!.Value;
+        w.MouseDown(onPhoto, MouseButton.Left);
+        w.MouseUp(onPhoto, MouseButton.Left);
+        Shots.Pump();
+        Assert.True(vm.IsViewing);
+        w.MouseDown(new Point(30, w.Bounds.Height / 2), MouseButton.Left);
+        w.MouseUp(new Point(30, w.Bounds.Height / 2), MouseButton.Left);
+        Shots.Pump();
+        Assert.False(vm.IsViewing);
 
         Application.Current!.RequestedThemeVariant = ThemeVariant.Light;
         vm.Selected = group;

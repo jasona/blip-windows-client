@@ -391,8 +391,45 @@ public sealed partial class MainViewModel : ObservableObject
         if (newValue is not null) newValue.IsSelected = true;
     }
 
+    // ---------- image viewer ----------
+
+    /// <summary>The photo open in the in-app viewer, or null.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsViewing), nameof(ViewerPosition), nameof(HasPreviousImage), nameof(HasNextImage))]
+    private AttachmentViewModel? _viewing;
+
+    public bool IsViewing => Viewing is not null;
+    private List<AttachmentViewModel> ThreadImages() =>
+        Messages.SelectMany(m => m.Attachments).Where(a => a.IsImage && (!a.PreviewFailed || a == Viewing)).ToList();
+    private int ViewingIndex => Viewing is null ? -1 : ThreadImages().IndexOf(Viewing);
+    public bool HasPreviousImage => ViewingIndex > 0;
+    public bool HasNextImage => ViewingIndex is var i && i >= 0 && i < ThreadImages().Count - 1;
+    /// <summary>"3 of 7": where this photo sits among the conversation's photos.</summary>
+    public string ViewerPosition => ThreadImages() is { Count: > 1 } all && ViewingIndex >= 0 ? $"{ViewingIndex + 1} of {all.Count}" : "";
+
+    [RelayCommand]
+    private void ViewImage(AttachmentViewModel? a)
+    {
+        if (a is not { IsImage: true }) return;
+        if (a.PreviewFailed) { a.OpenCommand.Execute(null); return; }
+        Viewing = a;
+        _ = a.LoadFullAsync();
+    }
+
+    [RelayCommand] private void CloseViewer() => Viewing = null;
+    [RelayCommand] private void PreviousImage() => Step(-1);
+    [RelayCommand] private void NextImage() => Step(1);
+
+    private void Step(int delta)
+    {
+        var all = ThreadImages();
+        var i = ViewingIndex + delta;
+        if (ViewingIndex >= 0 && i >= 0 && i < all.Count) ViewImage(all[i]);
+    }
+
     partial void OnSelectedChanged(ConversationViewModel? value)
     {
+        Viewing = null;
         Messages.Clear();
         PendingFiles.Clear();
         ReplyTarget = null;

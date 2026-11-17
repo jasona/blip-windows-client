@@ -38,7 +38,8 @@ INSERT INTO chat VALUES (7,'+15550100077','SMS;-;+15550100077',NULL,NULL,'SMS',N
 INSERT INTO chat VALUES (8,'chat900000000000000008','iMessage;+;chat900000000000000008','Ski Weekend','chat900000000000000008','iMessage','G8',NULL,43);
 INSERT INTO chat_handle_join VALUES (1,1),(2,1),(2,2),(3,3),(4,4),(5,3),(5,4),(5,5),(6,6),(7,7),(8,2),(8,6);
 INSERT INTO attachment VALUES (30,'~/Library/Messages/Attachments/ab/01/photo.png','photo.png','image/png','public.png',800);
-INSERT INTO message_attachment_join VALUES (10,30);
+INSERT INTO attachment VALUES (31,'~/Library/Messages/Attachments/ab/02/IMG_0042.jpeg','IMG_0042.jpeg','image/jpeg','public.jpeg',47270);
+INSERT INTO message_attachment_join VALUES (10,30),(14,31);
 """)
 B = 800000000 * 10**9
 S = 10**9
@@ -46,6 +47,7 @@ rows = [  # rowid, guid, date, text, from_me, read, handle, chat, assoc_type, as
     (10, "g10", B, "hello there", 0, 1, 1, 1, 0, None),
     (11, "g11", B + 60*S, "hi back", 1, 1, 0, 1, 0, None),
     (13, "g13", B + 90*S, "Loved “hi back”", 0, 1, 1, 1, 2000, "p:0/g11"),
+    (14, "g14", B + 100*S, "\ufffc", 0, 1, 1, 1, 0, None),   # a real photo, stored sideways (EXIF 6)
     (12, "g12", B + 120*S, "unread one", 0, 0, 1, 1, 0, None),
     (20, "g20", B + 30*S, "group msg", 0, 1, 2, 2, 0, None),
     # Emoji and services for the UI screenshots: ZWJ families, skin tones, flags, keycaps, VS16 hearts.
@@ -65,7 +67,7 @@ SERVICE = {23: "RCS", 24: "SMS", 44: "SMS"}
 for mid, guid, d, t, fm, rd, h, c, at, ag in rows:
     con.execute("""INSERT INTO message (ROWID,guid,date,text,is_from_me,is_read,handle_id,service,
                    associated_message_type,associated_message_guid,cache_has_attachments)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?)""", (mid, guid, d, t, fm, rd, h, SERVICE.get(mid, "iMessage"), at, ag, 1 if mid == 10 else 0))
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?)""", (mid, guid, d, t, fm, rd, h, SERVICE.get(mid, "iMessage"), at, ag, 1 if mid in (10, 14) else 0))
     con.execute("INSERT INTO chat_message_join VALUES (?,?,?)", (c, mid, d))
 con.commit()
 

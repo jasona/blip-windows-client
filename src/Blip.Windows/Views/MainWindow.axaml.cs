@@ -55,7 +55,10 @@ public partial class MainWindow : Window
             if (e.Property == ActualTransparencyLevelProperty) Backdrop();
             // The system caption buttons sit over the thread header's right end.
             if (e.Property == IsExtendedIntoWindowDecorationsProperty || e.Property == WindowStateProperty)
+            {
                 ThreadHeader.Padding = new Thickness(20, 0, IsExtendedIntoWindowDecorations ? 150 : 20, 0);
+                ViewerBar.Margin = new Thickness(20, 0, IsExtendedIntoWindowDecorations ? 150 : 20, 0);
+            }
         };
         Backdrop();
         var side = Columns.ColumnDefinitions[0];
@@ -76,6 +79,9 @@ public partial class MainWindow : Window
         vm.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(MainViewModel.Selected)) { _stickToBottom = true; SyncListSelection(); Composer.Focus(); }
+            // The viewer takes the keyboard while it is up, and hands it back to the composer.
+            if (e.PropertyName == nameof(MainViewModel.IsViewing))
+                Dispatcher.UIThread.Post(() => { if (vm.IsViewing) Viewer.Focus(); else Composer.Focus(); });
         };
         ThreadScroll.ScrollChanged += (_, e) =>
         {
@@ -90,6 +96,7 @@ public partial class MainWindow : Window
                 _stickToBottom = ThreadScroll.Offset.Y >= ThreadScroll.Extent.Height - ThreadScroll.Viewport.Height - 24;
         };
         Composer.AddHandler(KeyDownEvent, OnComposerKey, RoutingStrategies.Tunnel);
+        AddHandler(KeyDownEvent, OnViewerKey, RoutingStrategies.Tunnel);
         AddHandler(DragDrop.DragOverEvent, (_, e) =>
         {
             e.DragEffects = e.DataTransfer.Contains(DataFormat.File) && _vm.CanCompose ? DragDropEffects.Copy : DragDropEffects.None;
@@ -148,6 +155,62 @@ public partial class MainWindow : Window
     {
         if (_syncingList || _vm is null) return;
         if (ConversationList.SelectedItem is ConversationViewModel c) _vm.Selected = c;
+    }
+
+    private void OnViewerKey(object? sender, KeyEventArgs e)
+    {
+        if (_vm is not { IsViewing: true }) return;
+        switch (e.Key)
+        {
+            case Key.Escape: _vm.CloseViewerCommand.Execute(null); break;
+            case Key.Left: _vm.PreviousImageCommand.Execute(null); break;
+            case Key.Right: _vm.NextImageCommand.Execute(null); break;
+            default: return;
+        }
+        e.Handled = true;
+    }
+
+    /// <summary>A click on the dark surround closes the viewer; the photo and the buttons do not.</summary>
+    private void OnViewerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (e.Source is Visual v && (v is Image || v.FindAncestorOfType<Button>(true) is not null)) return;
+        if (e.Source is Visual bar && bar.FindAncestorOfType<Grid>(true) == ViewerBar)
+        {
+            OnDragArea(sender, e);   // the bar still moves the window
+            return;
+        }
+        _vm.CloseViewerCommand.Execute(null);
+        e.Handled = true;
+    }
+
+    private async void OnViewerOpen(object? sender, RoutedEventArgs e)
+    {
+        if (_vm.Viewing is { } a) await a.OpenCommand.ExecuteAsync(null);
+    }
+
+    private async void OnViewerSave(object? sender, RoutedEventArgs e)
+    {
+        if (_vm.Viewing is not { } a) return;
+        var ext = Path.GetExtension(a.SaveName);
+        var target = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Save photo",
+            SuggestedFileName = a.SaveName,
+            DefaultExtension = ext.TrimStart('.'),
+            FileTypeChoices = ext.Length > 0 ? [new FilePickerFileType(ext.TrimStart('.').ToUpperInvariant()) { Patterns = ["*" + ext] }] : null,
+        });
+        if (target is null) return;
+        a.Status = "Saving…";
+        try
+        {
+            var path = await a.OriginalAsync();
+            if (path is null) { a.Status = "could not download"; return; }
+            await using (var src = File.OpenRead(path))
+            await using (var dst = await target.OpenWriteAsync())
+                await src.CopyToAsync(dst);
+            a.Status = "Saved";
+        }
+        catch (Exception ex) { a.Status = ex.Message; }
     }
 
     public Task RequestSettings() => SettingsRequested?.Invoke() ?? Task.CompletedTask;

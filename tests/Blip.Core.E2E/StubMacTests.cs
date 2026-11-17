@@ -61,7 +61,8 @@ public class StubMacTests
         Assert.True(group.CanSend);
 
         var msgs = await c.ThreadAsync("+15550100011");
-        Assert.Equal(["hello there", "hi back", "unread one"], msgs.Select(m => m.Text));
+        Assert.Equal(["hello there", "hi back", "\ufffc", "unread one"], msgs.Select(m => m.Text));
+        Assert.Equal("IMG_0042.jpeg", Assert.Single(msgs[2].Attachments!).Name);
         Assert.Single(msgs[1].Tapbacks!);
 
         // Many queries on the pooled channels: no handshake per call.
