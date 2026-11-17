@@ -143,9 +143,21 @@ public class StubMacTests
         await Task.Delay(1100);   // mtime moves past the second the stub wrote the file in
         // What a Messages write does to mtime. touch (now) only needs write access; setting an
         // explicit time needs ownership, and on CI the runner user does not own chat.db.
-        using (var touch = System.Diagnostics.Process.Start("touch", [Env("BLIP_E2E_CHATDB")])) await touch.WaitForExitAsync();
-        while (changes == baseline && sw.ElapsedMilliseconds < 20000) await Task.Delay(50);
-        Assert.True(changes > baseline, "no push after chat.db changed");
+        var db = Env("BLIP_E2E_CHATDB");
+        var before = File.GetLastWriteTimeUtc(db);
+        var psi = new System.Diagnostics.ProcessStartInfo("touch", [db]) { RedirectStandardError = true };
+        using (var touch = System.Diagnostics.Process.Start(psi)!)
+        {
+            var err = await touch.StandardError.ReadToEndAsync();
+            await touch.WaitForExitAsync();
+            Assert.True(touch.ExitCode == 0, $"touch failed: {err}");
+        }
+        var after = File.GetLastWriteTimeUtc(db);
+        var touched = sw.ElapsedMilliseconds;
+        var deadline = touched + 5000;
+        while (changes == baseline && sw.ElapsedMilliseconds < deadline) await Task.Delay(50);
+        Assert.True(changes > baseline,
+            $"no push after chat.db changed (mtime {before:O} -> {after:O}, baseline {baseline}, touched at {touched} ms)");
         // Stopping must not wait for the next 30 s heartbeat: a pending read is torn down.
         var stop = System.Diagnostics.Stopwatch.StartNew();
         await m.DisposeAsync();

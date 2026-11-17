@@ -25,6 +25,8 @@ public class UiTests
             Width = 420, Height = 260,
             Content = new StackPanel { Margin = new Thickness(10), Spacing = 10, HorizontalAlignment = HorizontalAlignment.Left, Children = { label, box, plain } },
         };
+        // Grey antialiasing: Windows' default subpixel text has coloured fringes the pixel count would see.
+        Avalonia.Media.RenderOptions.SetTextRenderingMode(w, Avalonia.Media.TextRenderingMode.Antialias);
         w.Show();
         var frame = Shots.Capture(w, "emoji-colour");
 
