@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
-        with: { repository: nixfred/blip, ref: 63f42e1, path: blip }
+        with: { repository: nixfred/blip, ref: 63f42e1c26dd5acf78d7227a5ed3e06da4ee3192, path: blip }
       - uses: actions/setup-dotnet@v4
         with: { dotnet-version: "10.0.x" }
       - run: sudo apt-get install -y openssh-server fonts-noto-color-emoji
