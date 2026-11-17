@@ -98,6 +98,26 @@ public class UiTests
         Assert.True(vm.Messages.Single(m => m.Text.StartsWith("made it")).IsTheirs);
         Assert.Contains("\n", vm.Messages.Single(m => m.Text.StartsWith("😂😂")).Text);
 
+        // The newest bubble and its receipt line must sit fully above the composer, also after the
+        // window shrinks or the composer grows (it used to stay clipped until a manual scroll).
+        var scroll = w.FindControl<ScrollViewer>("ThreadScroll")!;
+        void AssertAtBottom(string when)
+        {
+            for (var i = 0; i < 3; i++) { w.UpdateLayout(); Shots.Pump(); }
+            Assert.True(scroll.Extent.Height > scroll.Viewport.Height, $"{when}: thread does not scroll, so the check proves nothing");
+            Assert.True(scroll.Offset.Y + scroll.Viewport.Height >= scroll.Extent.Height - 1,
+                $"{when}: bottom clipped by {scroll.Extent.Height - scroll.Offset.Y - scroll.Viewport.Height:F0} px");
+        }
+        w.Height = 500;   // MinHeight
+        vm.ComposerText = string.Join("\n", Enumerable.Range(1, 8).Select(i => $"line {i}"));
+        AssertAtBottom("after the window shrank and the composer grew");
+        vm.ComposerText = "";
+        w.Height = 720;
+        Shots.Pump();
+        var newestMine = vm.Messages.Last(m => m.IsMine);
+        if (newestMine.Model.Delivered == true || !string.IsNullOrEmpty(newestMine.Model.ReadAt))
+            Assert.True(newestMine.HasReceipt, "no Delivered/Read line under the newest own message");
+
         Application.Current!.RequestedThemeVariant = ThemeVariant.Dark;
         Shots.Capture(w, "main-dark-group");
         vm.ComposerText = "typing 😂🔥❤️ 👍🏽 ‼️ ok";

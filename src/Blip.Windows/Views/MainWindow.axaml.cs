@@ -55,8 +55,14 @@ public partial class MainWindow : Window
         };
         ThreadScroll.ScrollChanged += (_, e) =>
         {
-            // Follow new messages only while the person is already at the bottom.
-            if (e.ExtentDelta.Y == 0)
+            // Follow the bottom while the person is there. Content that grows after the scroll
+            // (images, receipts, a tapback badge) or a viewport that shrinks (window, a taller
+            // composer, a reply chip) must not leave the newest bubble half under the composer.
+            if (e.ExtentDelta.Y != 0 || e.ViewportDelta.Y != 0)
+            {
+                if (_stickToBottom) Dispatcher.UIThread.Post(() => ThreadScroll.ScrollToEnd(), DispatcherPriority.Background);
+            }
+            else
                 _stickToBottom = ThreadScroll.Offset.Y >= ThreadScroll.Extent.Height - ThreadScroll.Viewport.Height - 24;
         };
         Composer.AddHandler(KeyDownEvent, OnComposerKey, RoutingStrategies.Tunnel);
