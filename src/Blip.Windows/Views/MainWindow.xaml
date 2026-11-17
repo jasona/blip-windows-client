@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:Blip.Windows.ViewModels"
         xmlns:local="clr-namespace:Blip.Windows"
+        xmlns:emoji="clr-namespace:Emoji.Wpf;assembly=Emoji.Wpf"
         Title="Blip" Width="1100" Height="760" MinWidth="720" MinHeight="480"
         Icon="/Themes/blip.ico" AllowDrop="True">
   <Window.Resources>
@@ -46,9 +47,9 @@
                        Margin="4,2,0,0" Visibility="{Binding Pinned, Converter={StaticResource BoolToVis}}" ToolTip="Pinned in Messages" />
             <TextBlock DockPanel.Dock="Right" Text="&#xE7ED;" FontFamily="{StaticResource IconFont}" FontSize="11" Opacity="0.5"
                        Margin="4,2,0,0" Visibility="{Binding Muted, Converter={StaticResource BoolToVis}}" ToolTip="Alerts hidden" />
-            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+            <emoji:TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
           </DockPanel>
-          <TextBlock Text="{Binding Preview}" Opacity="0.7" TextTrimming="CharacterEllipsis" MaxHeight="36" TextWrapping="Wrap" FontSize="13" />
+          <emoji:TextBlock Text="{Binding Preview}" Opacity="0.7" TextTrimming="CharacterEllipsis" MaxHeight="36" TextWrapping="Wrap" FontSize="13" />
         </StackPanel>
       </Grid>
     </DataTemplate>
@@ -79,7 +80,7 @@
       <StackPanel Margin="12,2">
         <TextBlock Text="{Binding DayHeader}" HorizontalAlignment="Center" Opacity="0.55" FontSize="12" Margin="0,12,0,6"
                    Visibility="{Binding DayHeader, Converter={StaticResource EmptyToCollapsed}}" />
-        <TextBlock Text="{Binding Sender}" Opacity="0.6" FontSize="12" Margin="14,4,0,1"
+        <emoji:TextBlock Text="{Binding Sender}" Opacity="0.6" FontSize="12" Margin="14,4,0,1"
                    Visibility="{Binding ShowSender, Converter={StaticResource BoolToVis}}" />
         <StackPanel x:Name="Column" HorizontalAlignment="Left" MaxWidth="560">
           <Border x:Name="Bubble" CornerRadius="18" Padding="12,7" Background="{DynamicResource BubbleTheirs}"
@@ -114,12 +115,13 @@
             <StackPanel>
               <Border BorderThickness="3,0,0,0" BorderBrush="#80FFFFFF" Padding="8,2" Margin="0,2,0,6" Opacity="0.85"
                       Visibility="{Binding HasReply, Converter={StaticResource BoolToVis}}">
-                <TextBlock x:Name="Quote" Text="{Binding ReplyQuote}" FontSize="12" TextTrimming="CharacterEllipsis" MaxHeight="34" TextWrapping="Wrap" />
+                <emoji:TextBlock x:Name="Quote" Text="{Binding ReplyQuote}" FontSize="12" TextTrimming="CharacterEllipsis" MaxHeight="34" TextWrapping="Wrap" />
               </Border>
               <ItemsControl ItemsSource="{Binding Attachments}" ItemTemplate="{StaticResource AttachmentTemplate}"
                             Visibility="{Binding Attachments, Converter={StaticResource EmptyToCollapsed}}" />
-              <TextBox x:Name="Body" Text="{Binding Text, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" BorderThickness="0"
-                       Background="Transparent" Padding="0" FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+              <!-- emoji:TextBlock draws Segoe UI Emoji in colour; WPF's own text stack only draws its monochrome outlines. -->
+              <emoji:TextBlock x:Name="Body" Text="{Binding Text, Mode=OneWay}" TextWrapping="Wrap"
+                       FontSize="14" Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                        Visibility="{Binding HasText, Converter={StaticResource BoolToVis}}" />
               <TextBlock Text="unsent a message" FontStyle="Italic" Opacity="0.6"
                          Visibility="{Binding IsRetracted, Converter={StaticResource BoolToVis}}" />
@@ -130,7 +132,7 @@
           </Border>
           <Border HorizontalAlignment="Right" CornerRadius="10" Padding="6,1" Margin="0,-6,4,0" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
                   Visibility="{Binding HasTapbacks, Converter={StaticResource BoolToVis}}">
-            <TextBlock Text="{Binding Tapbacks}" FontSize="12" />
+            <emoji:TextBlock Text="{Binding Tapbacks}" FontSize="12" />
           </Border>
           <TextBlock x:Name="MetaLine" Text="{Binding Meta}" FontSize="11" Opacity="0.5" Margin="8,1" />
           <TextBlock Text="Sending…" FontSize="11" Opacity="0.6" HorizontalAlignment="Right" Margin="8,0"
@@ -225,7 +227,7 @@
         <StackPanel Orientation="Horizontal" DataContext="{Binding Selected}">
           <ContentPresenter Content="{Binding}" ContentTemplate="{StaticResource Avatar}" Margin="0,0,10,0" />
           <StackPanel VerticalAlignment="Center">
-            <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="SemiBold" />
+            <emoji:TextBlock Text="{Binding Title}" FontSize="16" FontWeight="SemiBold" />
             <TextBlock Text="{Binding Subtitle}" Opacity="0.6" FontSize="12" TextTrimming="CharacterEllipsis" MaxWidth="600" />
           </StackPanel>
         </StackPanel>
