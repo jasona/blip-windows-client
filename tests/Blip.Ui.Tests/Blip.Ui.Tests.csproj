@@ -18,4 +18,8 @@
     <ProjectReference Include="..\..\src\Blip.Core\Blip.Core.csproj" />
     <Using Include="Xunit" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- 60×40 upright: red top-left, blue top-right, green bottom-left, stored per EXIF Orientation 1–8 (made with PIL, cross-checked against its exif_transpose). -->
+    <Content Include="Fixtures\*.jpg" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

@@ -239,7 +239,7 @@ public sealed partial class MainViewModel : ObservableObject
     private void ShowAvatar(ConversationViewModel vm, byte[] bytes)
     {
         Bitmap bmp;
-        try { bmp = Bitmap.DecodeToWidth(new MemoryStream(bytes), 96); }
+        try { bmp = ImageDecode.ToWidth(bytes, 96); }
         catch { return; }   // a photo we cannot decode: initials stay
         Ui.Post(() =>
         {

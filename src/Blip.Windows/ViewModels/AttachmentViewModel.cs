@@ -38,7 +38,7 @@ public sealed partial class AttachmentViewModel : ObservableObject
             if (path is null) { Status = "preview unavailable"; return; }
             // Decode from memory so the cache file is not held open.
             var bytes = await File.ReadAllBytesAsync(path);
-            var bmp = await Task.Run(() => Bitmap.DecodeToWidth(new MemoryStream(bytes), 640));
+            var bmp = await Task.Run(() => Services.ImageDecode.ToWidth(bytes, 640));
             await Services.Ui.InvokeAsync(() => Image = bmp);
         }
         catch (Exception e)
