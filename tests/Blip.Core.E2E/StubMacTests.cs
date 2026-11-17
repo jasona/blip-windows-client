@@ -140,7 +140,10 @@ public class StubMacTests
         Assert.Equal(BridgeStatus.Online, m.Status);
         while (changes < 1 && sw.ElapsedMilliseconds < 15000) await Task.Delay(50);
         var baseline = changes;
-        File.SetLastWriteTimeUtc(Env("BLIP_E2E_CHATDB"), DateTime.UtcNow.AddSeconds(5));  // what a Messages write does to mtime
+        await Task.Delay(1100);   // mtime moves past the second the stub wrote the file in
+        // What a Messages write does to mtime. touch (now) only needs write access; setting an
+        // explicit time needs ownership, and on CI the runner user does not own chat.db.
+        using (var touch = System.Diagnostics.Process.Start("touch", [Env("BLIP_E2E_CHATDB")])) await touch.WaitForExitAsync();
         while (changes == baseline && sw.ElapsedMilliseconds < 20000) await Task.Delay(50);
         Assert.True(changes > baseline, "no push after chat.db changed");
         // Stopping must not wait for the next 30 s heartbeat: a pending read is torn down.

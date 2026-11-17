@@ -33,7 +33,8 @@ public class UiTests
 
         Assert.True(Shots.ColourfulPixels(frame, Px(label)) > 400, "read-only emoji are not in colour");
         Assert.True(Shots.ColourfulPixels(frame, Px(box)) > 400, "emoji in the composer are not in colour");
-        Assert.True(Shots.ColourfulPixels(frame, Px(plain)) < 20, "digits or '#' picked up the colour emoji font");
+        var plainColour = Shots.ColourfulPixels(frame, Px(plain));
+        Assert.True(plainColour < 20, $"digits or '#' picked up the colour emoji font ({plainColour} colour pixels)");
     }
 
     /// <summary>
