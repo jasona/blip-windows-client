@@ -51,6 +51,40 @@
     <Style Selector="ListBox.sidebar ListBoxItem:selected TextBlock.secondary">
       <Setter Property="Foreground" Value="#D0FFFFFF" />
     </Style>
+    <!-- pinned tiles -->
+    <Style Selector="Button.pin">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="4,10,4,8" />
+      <Setter Property="Margin" Value="2" />
+      <Setter Property="CornerRadius" Value="12" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.pin:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource RowHover}" />
+    </Style>
+    <Style Selector="Button.pin.selected /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource BlipBlue}" />
+    </Style>
+    <Style Selector="Button.pin.selected TextBlock.pinname">
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="Button.pin.unread TextBlock.pinname">
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="Ellipse.pinbadge">
+      <Setter Property="Stroke" Value="{DynamicResource WindowSolid}" />
+      <Setter Property="StrokeThickness" Value="2" />
+    </Style>
+    <Style Selector="Button.pin.selected Ellipse.pinbadge">
+      <Setter Property="Stroke" Value="{DynamicResource BlipBlue}" />
+    </Style>
+    <Style Selector="GridSplitter:pointerover">
+      <Setter Property="Background" Value="{DynamicResource Hairline}" />
+    </Style>
+
     <Style Selector="Ellipse.unread">
       <Setter Property="Fill" Value="{DynamicResource BlipBlue}" />
     </Style>
@@ -254,10 +288,10 @@
   </Window.Resources>
 
   <Panel x:Name="Root">
-    <Grid ColumnDefinitions="320,*" Margin="{Binding $parent[Window].OffScreenMargin}">
+    <Grid x:Name="Columns" ColumnDefinitions="320,Auto,*" Margin="{Binding $parent[Window].OffScreenMargin}">
 
       <!-- ============ sidebar ============ -->
-      <DockPanel Grid.Column="0">
+      <DockPanel Grid.Column="0" x:Name="Sidebar">
         <!-- doubles as the title bar: drag to move, double-click to maximise -->
         <Grid DockPanel.Dock="Top" Height="52" ColumnDefinitions="*,Auto" Background="Transparent" Margin="18,0,10,0"
               PointerPressed="OnDragArea" DoubleTapped="OnDragAreaDoubleTapped">
@@ -314,7 +348,35 @@
           </DockPanel>
         </Border>
 
-        <ListBox Classes="sidebar" ItemsSource="{Binding VisibleConversations}" SelectedItem="{Binding Selected}"
+        <!-- Messages' pins: a grid of faces that gains columns as the sidebar widens -->
+        <ItemsControl x:Name="PinnedGrid" DockPanel.Dock="Top" ItemsSource="{Binding PinnedConversations}" IsVisible="{Binding HasPinned}"
+                      Margin="10,0,10,4">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <UniformGrid Columns="{Binding $parent[Window].PinnedColumns}" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <Button Classes="pin" Classes.selected="{Binding IsSelected}" Classes.unread="{Binding IsUnread}"
+                      Command="{Binding $parent[Window].DataContext.OpenCommand}" CommandParameter="{Binding}" ToolTip.Tip="{Binding Title}">
+                <StackPanel Spacing="6">
+                  <Panel HorizontalAlignment="Center">
+                    <ContentControl Width="{Binding $parent[Window].PinnedAvatarSize}" Height="{Binding $parent[Window].PinnedAvatarSize}"
+                                    Content="{Binding}" ContentTemplate="{StaticResource Avatar}" />
+                    <Ellipse Classes="unread pinbadge" Width="13" Height="13" HorizontalAlignment="Left" VerticalAlignment="Top"
+                             Margin="-1,-1,0,0" IsVisible="{Binding IsUnread}" />
+                  </Panel>
+                  <TextBlock Classes="pinname" local:EmojiText.Text="{Binding ShortTitle}" FontSize="12" HorizontalAlignment="Center"
+                             TextAlignment="Center" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+              </Button>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <ListBox x:Name="ConversationList" Classes="sidebar" ItemsSource="{Binding VisibleConversations}"
+                 SelectionChanged="OnListSelectionChanged"
                  ScrollViewer.HorizontalScrollBarVisibility="Disabled">
           <ListBox.ItemTemplate>
             <DataTemplate>
@@ -340,7 +402,11 @@
       </DockPanel>
 
       <!-- ============ conversation ============ -->
-      <Border Grid.Column="1" Background="{DynamicResource Pane}" BorderBrush="{DynamicResource Hairline}" BorderThickness="1,0,0,0">
+      <!-- drag to resize the sidebar; the width is remembered -->
+      <GridSplitter Grid.Column="1" Width="5" ResizeDirection="Columns" Background="Transparent" Cursor="SizeWestEast"
+                    DragCompleted="OnSidebarResized" ToolTip.Tip="Drag to resize" ToolTip.ShowDelay="1200" />
+
+      <Border Grid.Column="2" Background="{DynamicResource Pane}" BorderBrush="{DynamicResource Hairline}" BorderThickness="1,0,0,0">
         <DockPanel>
           <Border DockPanel.Dock="Top" Background="{DynamicResource Banner}" Padding="16,8,8,8" IsVisible="{Binding HasBanner}">
             <DockPanel>

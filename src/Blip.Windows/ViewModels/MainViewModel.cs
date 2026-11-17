@@ -40,6 +40,9 @@ public sealed partial class MainViewModel : ObservableObject
     public ObservableCollection<ConversationViewModel> Conversations { get; } = [];
     /// <summary>What the sidebar shows: <see cref="Conversations"/> through the search filter.</summary>
     public ObservableCollection<ConversationViewModel> VisibleConversations { get; } = [];
+    /// <summary>Messages' pins, in pin order: the grid above the list. Empty while searching (the list shows every match).</summary>
+    public ObservableCollection<ConversationViewModel> PinnedConversations { get; } = [];
+    public bool HasPinned => PinnedConversations.Count > 0;
     public ObservableCollection<MessageViewModel> Messages { get; } = [];
     public ObservableCollection<string> PendingFiles { get; } = [];
 
@@ -251,7 +254,20 @@ public sealed partial class MainViewModel : ObservableObject
         || c.Title.Contains(Filter, StringComparison.CurrentCultureIgnoreCase)
         || c.Id.Contains(Filter, StringComparison.OrdinalIgnoreCase);
 
-    private void RefreshVisible() => Sync(VisibleConversations, Conversations.Where(Matches).ToList());
+    private void RefreshVisible()
+    {
+        var searching = Filter.Length > 0;
+        Sync(PinnedConversations, searching ? [] : Conversations.Where(c => c.Pinned).ToList());
+        Sync(VisibleConversations, Conversations.Where(c => searching ? Matches(c) : !c.Pinned).ToList());
+        OnPropertyChanged(nameof(HasPinned));
+    }
+
+    /// <summary>A tap on a pinned tile, or a row in the list.</summary>
+    [RelayCommand]
+    private void Open(ConversationViewModel? c)
+    {
+        if (c is not null) Selected = c;
+    }
     partial void OnBannerChanged(string value) => OnPropertyChanged(nameof(HasBanner));
     partial void OnReplyTargetChanged(MessageViewModel? value) => OnPropertyChanged(nameof(HasReplyTarget));
 
@@ -336,6 +352,7 @@ public sealed partial class MainViewModel : ObservableObject
         // Keep a conversation started from "New message" until the Mac lists it.
         if (Selected is { } sel && !convs.Any(c => c.Id == sel.Id)) next.Insert(0, sel);
         Sync(Conversations, next);
+        RefreshVisible();   // a pin or unpin on the Mac changes no list membership, only Model
         OnPropertyChanged(nameof(UnreadTotal));
         if (needFaces.Count > 0) QueueAvatars(needFaces);
         if (!live) return;   // a snapshot never raises toasts, and the first live load stays quiet too
@@ -366,6 +383,12 @@ public sealed partial class MainViewModel : ObservableObject
             if (IsWindowActive() && Selected?.Id == c.Id) continue;
             Notifier.Show(c.Id, c.Title, c.LastPreview);
         }
+    }
+
+    partial void OnSelectedChanged(ConversationViewModel? oldValue, ConversationViewModel? newValue)
+    {
+        if (oldValue is not null) oldValue.IsSelected = false;
+        if (newValue is not null) newValue.IsSelected = true;
     }
 
     partial void OnSelectedChanged(ConversationViewModel? value)

@@ -10,9 +10,13 @@ public sealed partial class ConversationViewModel(Conversation model) : Observab
     [ObservableProperty] private Conversation _model = model;
     [ObservableProperty] private bool _locallySeen;
     [ObservableProperty] private Bitmap? _avatar;
+    /// <summary>The open conversation; the pinned grid draws its own selection from this.</summary>
+    [ObservableProperty] private bool _isSelected;
 
     public string Id => Model.Id;
     public string Title => Model.Title;
+    /// <summary>First name, or the group name: what fits under a pinned tile.</summary>
+    public string ShortTitle => Model.IsGroup || !char.IsLetter(Model.Title.FirstOrDefault()) ? Model.Title : Model.Title.Split(' ')[0];
     public string Preview => Model.LastPreview;
     public string Time => Formatting.ListTime(Model.LastTime);
     public bool IsUnread => Model.Unread > 0 && !LocallySeen;
@@ -42,7 +46,7 @@ public sealed partial class ConversationViewModel(Conversation model) : Observab
 
     partial void OnModelChanged(Conversation value)
     {
-        OnPropertyChanged(nameof(Title)); OnPropertyChanged(nameof(Preview)); OnPropertyChanged(nameof(Time));
+        OnPropertyChanged(nameof(Title)); OnPropertyChanged(nameof(ShortTitle)); OnPropertyChanged(nameof(Preview)); OnPropertyChanged(nameof(Time));
         OnPropertyChanged(nameof(IsUnread)); OnPropertyChanged(nameof(Pinned)); OnPropertyChanged(nameof(Muted));
         OnPropertyChanged(nameof(Initials)); OnPropertyChanged(nameof(Subtitle)); OnPropertyChanged(nameof(HasSubtitle)); OnPropertyChanged(nameof(IsGreen));
         OnPropertyChanged(nameof(Color)); OnPropertyChanged(nameof(ColorBrush)); OnPropertyChanged(nameof(AvatarBrush));

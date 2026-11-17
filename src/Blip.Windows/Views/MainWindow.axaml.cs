@@ -7,6 +7,7 @@ using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using CommunityToolkit.Mvvm.Input;
+using Blip.Windows.Services;
 using Blip.Windows.ViewModels;
 
 namespace Blip.Windows.Views;
@@ -15,6 +16,21 @@ public partial class MainWindow : Window
 {
     private readonly MainViewModel _vm;
     private bool _stickToBottom = true;
+    private bool _syncingList;
+    private readonly UiState _ui = UiState.Load();
+
+    /// <summary>Tiles per row in the pinned grid: grows as the sidebar widens.</summary>
+    public static readonly StyledProperty<int> PinnedColumnsProperty =
+        AvaloniaProperty.Register<MainWindow, int>(nameof(PinnedColumns), 3);
+    /// <summary>Pinned avatar diameter: the tiles grow with the sidebar until a new column fits.</summary>
+    public static readonly StyledProperty<double> PinnedAvatarSizeProperty =
+        AvaloniaProperty.Register<MainWindow, double>(nameof(PinnedAvatarSize), 56);
+
+    public int PinnedColumns { get => GetValue(PinnedColumnsProperty); set => SetValue(PinnedColumnsProperty, value); }
+    public double PinnedAvatarSize { get => GetValue(PinnedAvatarSizeProperty); set => SetValue(PinnedAvatarSizeProperty, value); }
+
+    /// <summary>Narrowest tile before the grid drops a column.</summary>
+    private const double MinTile = 84;
 
     public event Func<Task>? SettingsRequested;
 
@@ -42,8 +58,16 @@ public partial class MainWindow : Window
                 ThreadHeader.Padding = new Thickness(20, 0, IsExtendedIntoWindowDecorations ? 150 : 20, 0);
         };
         Backdrop();
+        var side = Columns.ColumnDefinitions[0];
+        side.MinWidth = UiState.MinSidebar;
+        side.MaxWidth = UiState.MaxSidebar;
+        SidebarWidth = _ui.SidebarWidth;
+        Sidebar.SizeChanged += (_, _) => LayoutPins();
+        Closing += (_, _) => SaveLayout();
         DataContext = vm;
         if (vm is null) return;
+        vm.PinnedConversations.CollectionChanged += (_, _) => LayoutPins();
+        vm.VisibleConversations.CollectionChanged += (_, _) => Dispatcher.UIThread.Post(SyncListSelection);
         vm.IsWindowActive = () => Dispatcher.UIThread.CheckAccess()
             ? IsActive && IsVisible
             : Dispatcher.UIThread.Invoke(() => IsActive && IsVisible);
@@ -51,7 +75,7 @@ public partial class MainWindow : Window
         vm.ThreadUpdated += () => Dispatcher.UIThread.Post(() => { if (_stickToBottom) ThreadScroll.ScrollToEnd(); }, DispatcherPriority.Background);
         vm.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName == nameof(MainViewModel.Selected)) { _stickToBottom = true; Composer.Focus(); }
+            if (e.PropertyName == nameof(MainViewModel.Selected)) { _stickToBottom = true; SyncListSelection(); Composer.Focus(); }
         };
         ThreadScroll.ScrollChanged += (_, e) =>
         {
@@ -75,6 +99,55 @@ public partial class MainWindow : Window
         {
             if (_vm.CanCompose && e.DataTransfer.TryGetFiles() is { } items) _vm.AddFiles(LocalPaths(items));
         });
+    }
+
+    /// <summary>The sidebar's width in pixels; the splitter changes it and it is remembered.</summary>
+    public double SidebarWidth
+    {
+        get => Columns.ColumnDefinitions[0].ActualWidth is > 0 and var w ? w : Columns.ColumnDefinitions[0].Width.Value;
+        set => Columns.ColumnDefinitions[0].Width = new GridLength(Math.Clamp(value, UiState.MinSidebar, UiState.MaxSidebar));
+    }
+
+    /// <summary>
+    /// Fit as many tiles across as keep each at least <see cref="MinTile"/> wide (never fewer than
+    /// three, never more than there are pins, so two pins don't huddle at one side), then let the
+    /// avatars fill the tile.
+    /// </summary>
+    private void LayoutPins()
+    {
+        var width = Sidebar.Bounds.Width - 20 - 4;   // ItemsControl margin, tile margins
+        if (width <= 0) return;
+        var fit = Math.Max(3, (int)(width / MinTile));
+        var count = _vm?.PinnedConversations.Count ?? 0;
+        PinnedColumns = count > 0 ? Math.Min(fit, Math.Max(count, 3)) : fit;
+        var tile = width / Math.Max(fit, 1);
+        PinnedAvatarSize = Math.Round(Math.Clamp(tile - 30, 44, 68));
+    }
+
+    private void OnSidebarResized(object? sender, Avalonia.Input.VectorEventArgs e) => SaveLayout();
+
+    private void SaveLayout()
+    {
+        _ui.SidebarWidth = SidebarWidth;
+        _ui.Save();
+    }
+
+    /// <summary>The list mirrors <see cref="MainViewModel.Selected"/>: highlighted when it is in the list, cleared when a pin is open.</summary>
+    private void SyncListSelection()
+    {
+        _syncingList = true;
+        try
+        {
+            var sel = _vm.Selected;
+            ConversationList.SelectedItem = sel is not null && _vm.VisibleConversations.Contains(sel) ? sel : null;
+        }
+        finally { _syncingList = false; }
+    }
+
+    private void OnListSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_syncingList || _vm is null) return;
+        if (ConversationList.SelectedItem is ConversationViewModel c) _vm.Selected = c;
     }
 
     public Task RequestSettings() => SettingsRequested?.Invoke() ?? Task.CompletedTask;

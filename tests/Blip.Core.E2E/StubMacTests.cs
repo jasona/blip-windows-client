@@ -49,10 +49,15 @@ public class StubMacTests
         await using var t = Transport();
         var c = new BlipClient(t, Cfg());
         var convs = await c.ConversationsAsync();
-        Assert.Equal(2, convs.Count);
+        Assert.Equal(8, convs.Count);
         Assert.Equal(1, convs.Single(x => x.Id == "+15550100011").Unread);
-        var group = convs.Single(x => x.IsGroup);
+        Assert.Equal(3, convs.Count(x => x.IsGroup));
+        var group = convs.Single(x => x.Id == "chat900000000000000001");
         Assert.Equal("Trail Crew", group.Title);
+        // Messages' pins, in pin order, ahead of everything else.
+        Assert.Equal(["+15550100011", "chat900000000000000001", "+15550100033", "+15550100044", "chat900000000000000005"],
+            convs.Where(x => x.Pinned).Select(x => x.Id));
+        Assert.Equal("Leo Brandt", convs.Single(x => x.Id == "+15550100033").Title);
         Assert.True(group.CanSend);
 
         var msgs = await c.ThreadAsync("+15550100011");

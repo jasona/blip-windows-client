@@ -1,6 +1,8 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Styling;
 using Avalonia.VisualTree;
@@ -83,12 +85,16 @@ public class UiTests
         await using var session = new BlipSession(cfg, _ => true);
         var vm = new MainViewModel(session);
         var w = new MainWindow(vm) { Width = 1100, Height = 720 };
+        w.SidebarWidth = UiState.DefaultSidebar;   // not whatever an earlier run remembered
         w.Show();
         vm.Start();
-        await Shots.Settle(() => vm.Conversations.Count >= 2 && vm.Status == Blip.Core.Live.BridgeStatus.Online);
-        Assert.Equal(2, vm.VisibleConversations.Count);
+        await Shots.Settle(() => vm.Conversations.Count >= 8 && vm.Status == Blip.Core.Live.BridgeStatus.Online);
+        // Messages' five pins, in pin order, sit in the grid; the other three are the list.
+        Assert.Equal(["Maya Okafor", "Trail Crew", "Leo Brandt", "Priya Natarajan", "Book Club"], vm.PinnedConversations.Select(c => c.Title));
+        Assert.Equal(3, vm.VisibleConversations.Count);
+        Assert.Equal(["Maya", "Trail Crew"], vm.PinnedConversations.Take(2).Select(c => c.ShortTitle));
 
-        var group = vm.Conversations.Single(c => c.Model.IsGroup);
+        var group = vm.Conversations.Single(c => c.Title == "Trail Crew");
         vm.Selected = group;
         await Shots.Settle(() => vm.Messages.Count >= 5 && !vm.IsLoadingThread);
         var rcs = vm.Messages.Single(m => m.Text.StartsWith("sent over RCS"));
@@ -129,7 +135,7 @@ public class UiTests
         Shots.Capture(w, "main-dark-composer");
         vm.ComposerText = "";
 
-        vm.Selected = vm.Conversations.Single(c => !c.Model.IsGroup);
+        vm.Selected = vm.Conversations.Single(c => c.Id == "+15550100011");
         await Shots.Settle(() => vm.Messages.Any(m => m.Text == "unread one") && !vm.IsLoadingThread);
         // The stub's photo is not a real image: the bubble must say so instead of staying blank.
         var photo = vm.Messages.SelectMany(m => m.Attachments).Single(a => a.IsImage);
@@ -143,10 +149,56 @@ public class UiTests
         await Shots.Settle(() => vm.Messages.Count >= 5 && !vm.IsLoadingThread);
         Shots.Capture(w, "main-light-group");
 
+        // One selection across the grid and the list: a pin open clears the list's highlight,
+        // a click in the list opens that row and un-highlights the pin.
+        var list = w.FindControl<ListBox>("ConversationList")!;
+        var tiles = w.FindControl<ItemsControl>("PinnedGrid")!.GetVisualDescendants().OfType<Button>().Where(b => b.Classes.Contains("pin")).ToList();
+        Assert.Equal(5, tiles.Count);
+        Assert.Null(list.SelectedItem);
+        Assert.Contains("selected", tiles.Single(t => t.DataContext == group).Classes);
+        var sam = vm.VisibleConversations.Single(c => c.Title == "Sam Rivera");
+        list.SelectedItem = sam;
+        Shots.Pump();
+        Assert.Same(sam, vm.Selected);
+        Assert.DoesNotContain(tiles, t => t.Classes.Contains("selected"));
+        tiles.Single(t => t.DataContext is ConversationViewModel { Title: "Leo Brandt" }).Command!.Execute(tiles[2].CommandParameter);
+        Shots.Pump();
+        Assert.Equal("Leo Brandt", vm.Selected!.Title);
+        Assert.Null(list.SelectedItem);
+        Assert.Equal(3, w.PinnedColumns);
+
+        // Drag the divider: the sidebar widens, the grid gains columns, the width is remembered.
+        var splitter = w.GetVisualDescendants().OfType<GridSplitter>().Single();
+        var grip = splitter.TranslatePoint(new Point(splitter.Bounds.Width / 2, 300), w)!.Value;
+        w.MouseDown(grip, MouseButton.Left);
+        w.MouseMove(grip + new Point(120, 0));
+        w.MouseMove(grip + new Point(240, 0));
+        w.MouseUp(grip + new Point(240, 0), MouseButton.Left);
+        Shots.Pump();
+        Assert.InRange(w.SidebarWidth, UiState.DefaultSidebar + 200, UiState.MaxSidebar);
+        Assert.Equal(w.SidebarWidth, UiState.Load().SidebarWidth, 1);
+        Assert.Equal(5, w.PinnedColumns);   // one row of five: every pin fits across
+        Shots.Capture(w, "sidebar-wide");
+        w.SidebarWidth = 420;
+        Shots.Pump();
+        Assert.Equal(4, w.PinnedColumns);
+        Shots.Capture(w, "sidebar-medium");
+        w.SidebarWidth = 100;   // clamped
+        Shots.Pump();
+        Assert.Equal(UiState.MinSidebar, w.SidebarWidth, 1);
+        Assert.Equal(3, w.PinnedColumns);
+        Assert.True(w.PinnedAvatarSize >= 44);
+        Shots.Capture(w, "sidebar-narrow");
+        w.SidebarWidth = UiState.DefaultSidebar;
+        Shots.Pump();
+
+        // While searching every match is in the list and the grid steps aside.
         vm.Filter = "trail";
         Shots.Pump();
         Assert.Single(vm.VisibleConversations);
+        Assert.False(vm.HasPinned);
         vm.Filter = "";
+        Assert.Equal(5, vm.PinnedConversations.Count);
 
         var newButton = w.GetVisualDescendants().OfType<Button>().Single(b => ToolTip.GetTip(b) as string == "New message");
         newButton.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
