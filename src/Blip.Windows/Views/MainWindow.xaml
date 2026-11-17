@@ -82,7 +82,7 @@
         <TextBlock Text="{Binding Sender}" Opacity="0.6" FontSize="12" Margin="14,4,0,1"
                    Visibility="{Binding ShowSender, Converter={StaticResource BoolToVis}}" />
         <StackPanel x:Name="Column" HorizontalAlignment="Left" MaxWidth="560">
-          <Border x:Name="Bubble" CornerRadius="18" Padding="12,7" Background="{StaticResource BubbleTheirs}"
+          <Border x:Name="Bubble" CornerRadius="18" Padding="12,7" Background="{DynamicResource BubbleTheirs}"
                   Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=Window}}">
             <Border.ContextMenu>
               <ContextMenu>

@@ -12,7 +12,8 @@
       <local:EmptyToCollapsedConverter x:Key="EmptyToCollapsed" />
       <SolidColorBrush x:Key="BlipBlue" Color="#0A84FF" />
       <SolidColorBrush x:Key="BlipGreen" Color="#30C759" />
-      <SolidColorBrush x:Key="BubbleTheirs" Color="#40808080" />
+      <!-- Incoming bubbles: opaque neutral grey (translucent grey picked up the window tint). App.ApplyBubbleTheme swaps it for light mode. -->
+      <SolidColorBrush x:Key="BubbleTheirs" Color="#3A3A3C" />
       <FontFamily x:Key="IconFont">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
     </ResourceDictionary>
   </Application.Resources>

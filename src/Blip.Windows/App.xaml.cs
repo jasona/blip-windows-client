@@ -49,6 +49,12 @@ public partial class App : Application
             });
         };
 
+        ApplyBubbleTheme();
+        Microsoft.Win32.SystemEvents.UserPreferenceChanged += (_, a) =>
+        {
+            if (a.Category == Microsoft.Win32.UserPreferenceCategory.General) Dispatcher.Invoke(ApplyBubbleTheme);
+        };
+
         CreateTray();
         var config = BridgeConfig.Load();
         if (string.IsNullOrWhiteSpace(config.Host) && !OpenSettings(firstRun: true))
@@ -57,6 +63,18 @@ public partial class App : Application
             return;
         }
         StartSession();
+    }
+
+    /// <summary>Messages' incoming grey for the current Windows app theme (ThemeMode="System" follows the same setting).</summary>
+    private void ApplyBubbleTheme()
+    {
+        var light = Microsoft.Win32.Registry.GetValue(
+            @"HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", "AppsUseLightTheme", null) is not int v || v == 1;   // Windows defaults to light
+        var brush = new System.Windows.Media.SolidColorBrush(light
+            ? System.Windows.Media.Color.FromRgb(0xE9, 0xE9, 0xEB)
+            : System.Windows.Media.Color.FromRgb(0x3A, 0x3A, 0x3C));
+        brush.Freeze();
+        Resources["BubbleTheirs"] = brush;
     }
 
     private void StartSession()
