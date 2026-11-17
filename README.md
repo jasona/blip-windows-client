@@ -153,6 +153,7 @@ including in text boxes. Two details make that hold everywhere:
 | Send | Text (Enter; Shift+Enter for a newline), files by button, drag and drop or Ctrl+V (images and copied files), caption with the last file, SMS/RCS chosen by the same rules as Linux (`SendServiceSelector`), groups by their AppleScript GUID, new conversation to a number or email |
 | Live | Push within ~2 s, toasts for new messages (one per conversation, click to open; muted conversations stay quiet), tray icon with unread count, close-to-tray |
 | Opt-in | Tapbacks and threaded replies (right-click a bubble). These drive Messages through Accessibility, so they're off by default as on Linux. Mark-read-on-open (`push_read`) brings Messages to the front on the Mac, so it's off by default too, and opening a conversation clears its dot locally only. |
+| Look | Messages' bubbles (runs grouped per sender, tails, tapbacks on the corner, time on hover) on a Windows 11 window: Mica backdrop where available, title bar built into the sidebar and header, light and dark from the system. Ctrl+N new message, Ctrl+F search |
 | Startup | Opens from an encrypted snapshot, cached photos and prefetched threads, then refreshes live ([Startup cache](#startup-cache)) |
 | Safety | Host key pinning, a confined key, text on stdin only, message text on disk only DPAPI-encrypted (and only with `local_cache`), Mark-of-the-Web on every downloaded attachment, and program files (`.exe`, `.lnk`, `.js`, …) shown in Explorer but never launched |
 

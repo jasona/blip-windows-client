@@ -34,25 +34,44 @@ public static class Dialog
         var win = new Window
         {
             Title = title,
-            Width = 480,
+            Width = 460,
             SizeToContent = SizeToContent.Height,
             CanResize = false,
         };
-        var ok = new Button { Content = yes, MinWidth = 90, IsDefault = true, Classes = { "accent" } };
+        win[!Window.BackgroundProperty] = win.GetResourceObservable("WindowSolid").ToBinding();
+        var ok = new Button { Content = yes, MinWidth = 96, IsDefault = true, Classes = { "accent" } };
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Spacing = 8 };
         if (no is not null)
         {
-            var cancel = new Button { Content = no, MinWidth = 90, IsCancel = true };
+            var cancel = new Button { Content = no, MinWidth = 96, IsCancel = true };
             cancel.Click += (_, _) => win.Close();
             buttons.Children.Add(cancel);
         }
         buttons.Children.Add(ok);
         ok.Click += (_, _) => { result = true; win.Close(); };
-        win.Content = new StackPanel
+        // Heading from the window title ("Blip: confirm the Mac" reads "Confirm the Mac").
+        var heading = title.StartsWith("Blip: ") ? title[6..] : title;
+        heading = heading.Length > 0 ? char.ToUpperInvariant(heading[0]) + heading[1..] : heading;
+        var footer = new Border { Padding = new Thickness(24, 14), BorderThickness = new Thickness(0, 1, 0, 0), Child = buttons };
+        footer[!Border.BackgroundProperty] = footer.GetResourceObservable("Card").ToBinding();
+        footer[!Border.BorderBrushProperty] = footer.GetResourceObservable("CardStroke").ToBinding();
+        DockPanel.SetDock(footer, Dock.Bottom);
+        win.Content = new DockPanel
         {
-            Margin = new Thickness(20),
-            Spacing = 16,
-            Children = { new SelectableTextBlock { Text = text, TextWrapping = Avalonia.Media.TextWrapping.Wrap }, buttons },
+            Children =
+            {
+                footer,
+                new StackPanel
+                {
+                    Margin = new Thickness(24, 20, 24, 22),
+                    Spacing = 10,
+                    Children =
+                    {
+                        new TextBlock { Text = heading, FontSize = 18, FontWeight = Avalonia.Media.FontWeight.SemiBold },
+                        new SelectableTextBlock { Text = text, TextWrapping = Avalonia.Media.TextWrapping.Wrap, FontSize = 13, LineHeight = 19 },
+                    },
+                },
+            },
         };
         return (win, () => result);
     }

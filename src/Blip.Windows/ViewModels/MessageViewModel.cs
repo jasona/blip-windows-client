@@ -20,6 +20,9 @@ public sealed partial class MessageViewModel : ObservableObject
     [ObservableProperty] private string _receipt = "";
     [ObservableProperty] private bool _showSender;
     [ObservableProperty] private string _dayHeader = "";
+    /// <summary>First and last bubble of a run from one sender: spacing, sender name, tail and avatar.</summary>
+    [ObservableProperty] private bool _groupStart = true;
+    [ObservableProperty] private bool _groupEnd = true;
 
     public IReadOnlyList<AttachmentViewModel> Attachments { get; }
     public bool HasAttachments => Attachments.Count > 0;
@@ -77,6 +80,25 @@ public sealed partial class MessageViewModel : ObservableObject
             if (Model.Scheduled == true) parts.Add("Send Later");
             return string.Join(" · ", parts);
         }
+    }
+
+    /// <summary>Edited, effect, Send Later: what a bubble says beyond its time (the time is a tooltip).</summary>
+    public string Extra => string.Join(" · ", Meta.Split(" · ").Skip(1));
+    public bool HasExtra => Extra.Length > 0;
+    public string TimeTip => Model.Time.ToLocalTime().ToString("f", System.Globalization.CultureInfo.CurrentCulture);
+
+    public bool HasBubble => HasText || HasReply || IsRetracted || HasLink;
+    public bool ShowTail => GroupEnd && HasBubble;
+    public bool HasGroupGutter => IsGroup && !IsMine;
+    public bool ShowGroupAvatar => HasGroupGutter && GroupEnd;
+    public string SenderInitials => Formatting.Initials(Sender);
+    public bool SenderHasInitials => SenderInitials != "#";
+    public Avalonia.Media.IBrush SenderBrush => Formatting.AvatarBrush(Model.Handle ?? Sender);
+
+    partial void OnGroupEndChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ShowTail));
+        OnPropertyChanged(nameof(ShowGroupAvatar));
     }
 
     public string Tapbacks => Model.Tapbacks is { Count: > 0 } t

@@ -136,6 +136,8 @@ public class UiTests
         var settings = new SettingsWindow(new SettingsViewModel(cfg with { HostKey = "SHA256:" + new string('A', 43) }), firstRun: true);
         settings.Show();
         Shots.Capture(settings, "settings-light");
+        Application.Current!.RequestedThemeVariant = ThemeVariant.Dark;
+        Shots.Capture(settings, "settings-dark");
         settings.Close();
         Application.Current!.RequestedThemeVariant = ThemeVariant.Default;
         vm.SaveSnapshot();

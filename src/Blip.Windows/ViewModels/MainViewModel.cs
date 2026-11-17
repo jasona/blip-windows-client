@@ -67,11 +67,44 @@ public sealed partial class MainViewModel : ObservableObject
     public bool HasBanner => Banner.Length > 0;
     public bool HasReplyTarget => ReplyTarget is not null;
     public bool CanCompose => Selected?.Model.CanSend == true;
+    public bool IsOnline => Status == BridgeStatus.Online;
+    /// <summary>Something to send: the send button only shows then, as in Messages.</summary>
+    public bool HasDraft => ComposerText.Trim().Length > 0 || PendingFiles.Count > 0;
+    public bool HasPendingFiles => PendingFiles.Count > 0;
+    public string ComposerHint => SendService switch
+    {
+        "" => "Message",
+        "iMessage" => "iMessage",
+        var other => "Text Message · " + other,
+    };
+    partial void OnSendServiceChanged(string value)
+    {
+        OnPropertyChanged(nameof(ComposerHint));
+        OnPropertyChanged(nameof(SendsGreen));
+    }
+
+    public string StatusShort => Status switch
+    {
+        BridgeStatus.Online => "Connected",
+        BridgeStatus.Connecting => "Connecting",
+        BridgeStatus.Offline => "Offline",
+        _ => "Needs attention",
+    };
+    /// <summary>SMS and RCS drafts get Messages' green send button.</summary>
+    public bool SendsGreen => SendService is not ("" or "iMessage");
+
+    partial void OnStatusChanged(BridgeStatus value)
+    {
+        OnPropertyChanged(nameof(IsOnline));
+        OnPropertyChanged(nameof(StatusShort));
+    }
+    partial void OnComposerTextChanged(string value) => OnPropertyChanged(nameof(HasDraft));
 
     public MainViewModel(BlipSession session)
     {
         _session = session;
         Conversations.CollectionChanged += (_, _) => RefreshVisible();
+        PendingFiles.CollectionChanged += (_, _) => { OnPropertyChanged(nameof(HasDraft)); OnPropertyChanged(nameof(HasPendingFiles)); };
         session.Monitor.Changed += () => _ = ReloadAsync();
         session.Monitor.StatusChanged += (s, d) => Ui.InvokeAsync(() => OnStatus(s, d));
     }
@@ -402,25 +435,34 @@ public sealed partial class MainViewModel : ObservableObject
         ThreadUpdated?.Invoke();
     }
 
-    /// <summary>Day headers, sender names in groups, and the single "Read/Delivered" line under the newest own message.</summary>
+    /// <summary>
+    /// Time headers after a 30-minute gap, runs of bubbles from one sender (grouped when under
+    /// three minutes apart), sender names at the start of a run in groups, and the single
+    /// "Read/Delivered" line under the newest own message.
+    /// </summary>
     private static void Decorate(List<MessageViewModel> list)
     {
-        DateTimeOffset prev = DateTimeOffset.MinValue;
-        string? prevSender = null;
+        MessageViewModel? prev = null;
         foreach (var m in list)
         {
             var t = m.Model.Time;
-            m.DayHeader = (t - prev).TotalMinutes > 60 ? Formatting.DayHeader(t) : "";
-            m.ShowSender = m.IsGroup && !m.IsMine && (m.Model.Handle != prevSender || m.DayHeader.Length > 0);
-            prev = t;
-            prevSender = m.IsMine ? null : m.Model.Handle;
+            m.DayHeader = prev is null || (t - prev.Model.Time).TotalMinutes > 30 ? Formatting.DayHeader(t) : "";
+            var sameRun = prev is not null && m.DayHeader.Length == 0 && SenderKey(prev) == SenderKey(m)
+                          && (t - prev.Model.Time).TotalMinutes < 3;
+            m.GroupStart = !sameRun;
+            if (prev is not null) prev.GroupEnd = !sameRun;
+            m.ShowSender = m.IsGroup && !m.IsMine && m.GroupStart;
             m.Receipt = "";
+            prev = m;
         }
+        if (prev is not null) prev.GroupEnd = true;
         var last = list.LastOrDefault(m => m.IsMine && !m.Pending && !m.HasFailure && m.Model.Scheduled != true && !m.IsRetracted);
         if (last is not null)
             last.Receipt = last.Model.ReadAt is { Length: > 0 } r ? "Read " + Formatting.BubbleTime(BlipTime.Parse(r))
                 : last.Model.Delivered == true ? "Delivered" : "";
     }
+
+    private static string SenderKey(MessageViewModel m) => m.IsMine ? "\u0001me" : m.Model.Handle ?? m.Sender;
 
     private async Task MarkSeenAsync(ConversationViewModel conv, IReadOnlyList<Message> msgs)
     {
@@ -520,6 +562,7 @@ public sealed partial class MainViewModel : ObservableObject
         var vm = new MessageViewModel(m, _session.Client, _session.Cache, conv.Model.IsGroup, "pending:" + Guid.NewGuid().ToString("N"))
         { Pending = true, Owner = this };
         Messages.Add(vm);
+        Decorate(Messages.ToList());
         ThreadUpdated?.Invoke();
         return vm;
     }

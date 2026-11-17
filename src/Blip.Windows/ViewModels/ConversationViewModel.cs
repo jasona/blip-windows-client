@@ -21,18 +21,32 @@ public sealed partial class ConversationViewModel(Conversation model) : Observab
     public string Initials => Formatting.Initials(Model.Title);
     public string Color => Formatting.ColorFor(Model.Id);
     public IBrush ColorBrush => Avalonia.Media.Color.TryParse(Color, out var c) ? new SolidColorBrush(c) : Brushes.Gray;
+    public IBrush AvatarBrush => Formatting.AvatarBrush(Model.Id);
+    public bool HasInitials => Initials != "#";
+    public bool IsGroupChat => Model.IsGroup;
     public bool HasAvatar => Avatar is not null;
     public bool IsGreen => !Model.IsGroup && SendServiceSelector.IsGreen(Model.Service);
-    public string Subtitle => Model.IsGroup
-        ? string.Join(", ", Model.Participants.Select(p => p.Name))
-        : Model.Id.Contains('@') ? Model.Id : ChatIds.Pretty(Model.Id);
+    /// <summary>Under the name in the header: the group's people, or the number when the name is not already it.</summary>
+    public string Subtitle
+    {
+        get
+        {
+            if (Model.IsGroup)
+                return Model.Participants.Count == 0 ? "Group"
+                    : string.Join(", ", Model.Participants.Select(p => ChatIds.Pretty(p.Name)));
+            var id = Model.Id.Contains('@') ? Model.Id : ChatIds.Pretty(Model.Id);
+            return id == Title ? "" : id;
+        }
+    }
+    public bool HasSubtitle => Subtitle.Length > 0;
 
     partial void OnModelChanged(Conversation value)
     {
         OnPropertyChanged(nameof(Title)); OnPropertyChanged(nameof(Preview)); OnPropertyChanged(nameof(Time));
         OnPropertyChanged(nameof(IsUnread)); OnPropertyChanged(nameof(Pinned)); OnPropertyChanged(nameof(Muted));
-        OnPropertyChanged(nameof(Initials)); OnPropertyChanged(nameof(Subtitle)); OnPropertyChanged(nameof(IsGreen));
-        OnPropertyChanged(nameof(Color)); OnPropertyChanged(nameof(ColorBrush));
+        OnPropertyChanged(nameof(Initials)); OnPropertyChanged(nameof(Subtitle)); OnPropertyChanged(nameof(HasSubtitle)); OnPropertyChanged(nameof(IsGreen));
+        OnPropertyChanged(nameof(Color)); OnPropertyChanged(nameof(ColorBrush)); OnPropertyChanged(nameof(AvatarBrush));
+        OnPropertyChanged(nameof(HasInitials)); OnPropertyChanged(nameof(IsGroupChat));
     }
 
     partial void OnLocallySeenChanged(bool value) => OnPropertyChanged(nameof(IsUnread));

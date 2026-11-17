@@ -36,6 +36,9 @@ internal static class Shots
     public static WriteableBitmap Capture(Window w, string name)
     {
         Pump();
+        // Let hover and selection transitions finish (headless time only moves on render ticks).
+        Avalonia.Headless.AvaloniaHeadlessPlatform.ForceRenderTimerTick(40);
+        Pump();
         var frame = Avalonia.Headless.HeadlessWindowExtensions.CaptureRenderedFrame(w)!;
         frame.Save(Path.Combine(Dir, name + ".png"));
         return (WriteableBitmap)frame;
