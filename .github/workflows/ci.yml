@@ -9,19 +9,31 @@ jobs:
         with: { dotnet-version: "10.0.x" }
       - run: dotnet build -c Release
       - run: dotnet test tests/Blip.Core.Tests -c Release --no-build
+      - run: dotnet test tests/Blip.Ui.Tests -c Release --no-build   # Segoe UI Emoji, real Windows TFM
+        env: { BLIP_UI_SHOTS: "${{ github.workspace }}/shots" }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: screenshots-windows, path: shots, if-no-files-found: ignore }
   e2e:
     # Real SSH, real blip-dispatch + imsg, stub Mac (no AppleScript off a Mac).
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
-        with: { repository: nixfred/blip, ref: 63f42e1, path: blip }
+        with: { repository: nixfred/blip, ref: 63f42e1c26dd5acf78d7227a5ed3e06da4ee3192, path: blip }
       - uses: actions/setup-dotnet@v4
         with: { dotnet-version: "10.0.x" }
-      - run: sudo apt-get install -y openssh-server
+      - run: sudo apt-get install -y openssh-server fonts-noto-color-emoji
       - run: sudo tests/e2e/setup-stub-mac.sh "$PWD/blip"
       - run: |
           eval "$(sudo tests/e2e/setup-stub-mac.sh --env)"
           sudo chmod 644 "$BLIP_E2E_KEY"   # the runner user reads the test key
           sudo chmod o+rw "$BLIP_E2E_CHATDB" "$(dirname "$BLIP_E2E_CHATDB")"
+          d=$(dirname "$BLIP_E2E_CHATDB"); while [ "$d" != / ]; do sudo chmod o+x "$d"; d=$(dirname "$d"); done   # useradd -m homes are 750
+          sudo chown "$(id -un)" "$BLIP_E2E_CHATDB"   # the watch test touches it; the stub Mac still reads it via o+r
+          ls -ld "$BLIP_E2E_CHATDB" "$(dirname "$BLIP_E2E_CHATDB")"
           dotnet test tests/Blip.Core.E2E
+          BLIP_UI_SHOTS="$PWD/shots" dotnet test tests/Blip.Ui.Tests
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: screenshots, path: shots, if-no-files-found: ignore }

@@ -49,14 +49,20 @@ public class StubMacTests
         await using var t = Transport();
         var c = new BlipClient(t, Cfg());
         var convs = await c.ConversationsAsync();
-        Assert.Equal(2, convs.Count);
+        Assert.Equal(8, convs.Count);
         Assert.Equal(1, convs.Single(x => x.Id == "+15550100011").Unread);
-        var group = convs.Single(x => x.IsGroup);
+        Assert.Equal(3, convs.Count(x => x.IsGroup));
+        var group = convs.Single(x => x.Id == "chat900000000000000001");
         Assert.Equal("Trail Crew", group.Title);
+        // Messages' pins, in pin order, ahead of everything else.
+        Assert.Equal(["+15550100011", "chat900000000000000001", "+15550100033", "+15550100044", "chat900000000000000005"],
+            convs.Where(x => x.Pinned).Select(x => x.Id));
+        Assert.Equal("Leo Brandt", convs.Single(x => x.Id == "+15550100033").Title);
         Assert.True(group.CanSend);
 
         var msgs = await c.ThreadAsync("+15550100011");
-        Assert.Equal(["hello there", "hi back", "unread one"], msgs.Select(m => m.Text));
+        Assert.Equal(["hello there", "hi back", "\ufffc", "unread one"], msgs.Select(m => m.Text));
+        Assert.Equal("IMG_0042.jpeg", Assert.Single(msgs[2].Attachments!).Name);
         Assert.Single(msgs[1].Tapbacks!);
 
         // Many queries on the pooled channels: no handshake per call.
@@ -140,9 +146,24 @@ public class StubMacTests
         Assert.Equal(BridgeStatus.Online, m.Status);
         while (changes < 1 && sw.ElapsedMilliseconds < 15000) await Task.Delay(50);
         var baseline = changes;
-        File.SetLastWriteTimeUtc(Env("BLIP_E2E_CHATDB"), DateTime.UtcNow.AddSeconds(5));  // what a Messages write does to mtime
-        while (changes == baseline && sw.ElapsedMilliseconds < 20000) await Task.Delay(50);
-        Assert.True(changes > baseline, "no push after chat.db changed");
+        await Task.Delay(1100);   // mtime moves past the second the stub wrote the file in
+        // What a Messages write does to mtime. touch (now) only needs write access; setting an
+        // explicit time needs ownership, and on CI the runner user does not own chat.db.
+        var db = Env("BLIP_E2E_CHATDB");
+        var before = File.GetLastWriteTimeUtc(db);
+        var psi = new System.Diagnostics.ProcessStartInfo("touch", [db]) { RedirectStandardError = true };
+        using (var touch = System.Diagnostics.Process.Start(psi)!)
+        {
+            var err = await touch.StandardError.ReadToEndAsync();
+            await touch.WaitForExitAsync();
+            Assert.True(touch.ExitCode == 0, $"touch failed: {err}");
+        }
+        var after = File.GetLastWriteTimeUtc(db);
+        var touched = sw.ElapsedMilliseconds;
+        var deadline = touched + 5000;
+        while (changes == baseline && sw.ElapsedMilliseconds < deadline) await Task.Delay(50);
+        Assert.True(changes > baseline,
+            $"no push after chat.db changed (mtime {before:O} -> {after:O}, baseline {baseline}, touched at {touched} ms)");
         // Stopping must not wait for the next 30 s heartbeat: a pending read is torn down.
         var stop = System.Diagnostics.Stopwatch.StartNew();
         await m.DisposeAsync();

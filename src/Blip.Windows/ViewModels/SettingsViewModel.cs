@@ -1,4 +1,3 @@
-using System.Windows;
 using Blip.Core;
 using Blip.Core.Config;
 using Blip.Core.Transport;
@@ -25,6 +24,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string _macCommand = "";
     [ObservableProperty] private string _testResult = "";
     [ObservableProperty] private bool _busy;
+
+    /// <summary>Set by the window: the clipboard belongs to the top-level, not the view model.</summary>
+    public Func<string, Task>? SetClipboard { get; set; }
 
     public SettingsViewModel(BridgeConfig c)
     {
@@ -63,7 +65,12 @@ public sealed partial class SettingsViewModel : ObservableObject
     [RelayCommand]
     private void CopyMacCommand()
     {
-        if (MacCommand.Length > 0) try { Clipboard.SetText(MacCommand); TestResult = "Copied. Paste it into Terminal on the Mac."; } catch { }
+        if (MacCommand.Length == 0 || SetClipboard is null) return;
+        _ = Copy();
+        async Task Copy()
+        {
+            try { await SetClipboard(MacCommand); TestResult = "Copied. Paste it into Terminal on the Mac."; } catch { }
+        }
     }
 
     [RelayCommand]

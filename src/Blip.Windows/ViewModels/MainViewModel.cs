@@ -1,9 +1,6 @@
 using System.Collections.ObjectModel;
-using System.ComponentModel;
-using System.Windows;
-using System.Windows.Data;
 using System.Threading.Channels;
-using System.Windows.Media.Imaging;
+using Avalonia.Media.Imaging;
 using Blip.Core;
 using Blip.Core.Cache;
 using Blip.Core.Live;
@@ -25,7 +22,7 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly ReadMarks _marks = new();
     private readonly Dictionary<string, DateTimeOffset> _notified = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _reloadGate = new(1, 1);
-    private readonly Dictionary<string, BitmapImage?> _avatars = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Bitmap?> _avatars = new(StringComparer.Ordinal);
     private bool _firstLoad = true;
     private int _reloadQueued;
     private IReadOnlyList<Message> _threadModels = [];
@@ -41,7 +38,11 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly Channel<ConversationViewModel> _avatarQueue = Channel.CreateUnbounded<ConversationViewModel>();
 
     public ObservableCollection<ConversationViewModel> Conversations { get; } = [];
-    public ICollectionView ConversationsView { get; }
+    /// <summary>What the sidebar shows: <see cref="Conversations"/> through the search filter.</summary>
+    public ObservableCollection<ConversationViewModel> VisibleConversations { get; } = [];
+    /// <summary>Messages' pins, in pin order: the grid above the list. Empty while searching (the list shows every match).</summary>
+    public ObservableCollection<ConversationViewModel> PinnedConversations { get; } = [];
+    public bool HasPinned => PinnedConversations.Count > 0;
     public ObservableCollection<MessageViewModel> Messages { get; } = [];
     public ObservableCollection<string> PendingFiles { get; } = [];
 
@@ -58,6 +59,8 @@ public sealed partial class MainViewModel : ObservableObject
 
     /// <summary>The window tells us whether a toast is needed (not focused, or another conversation open).</summary>
     public Func<bool> IsWindowActive { get; set; } = () => true;
+    /// <summary>Set by the window: the clipboard belongs to the top-level.</summary>
+    public Func<string, Task>? SetClipboard { get; set; }
     /// <summary>Raised after the open thread changed, so the view can keep the scroll at the bottom.</summary>
     public event Action? ThreadUpdated;
 
@@ -67,15 +70,46 @@ public sealed partial class MainViewModel : ObservableObject
     public bool HasBanner => Banner.Length > 0;
     public bool HasReplyTarget => ReplyTarget is not null;
     public bool CanCompose => Selected?.Model.CanSend == true;
+    public bool IsOnline => Status == BridgeStatus.Online;
+    /// <summary>Something to send: the send button only shows then, as in Messages.</summary>
+    public bool HasDraft => ComposerText.Trim().Length > 0 || PendingFiles.Count > 0;
+    public bool HasPendingFiles => PendingFiles.Count > 0;
+    public string ComposerHint => SendService switch
+    {
+        "" => "Message",
+        "iMessage" => "iMessage",
+        var other => "Text Message · " + other,
+    };
+    partial void OnSendServiceChanged(string value)
+    {
+        OnPropertyChanged(nameof(ComposerHint));
+        OnPropertyChanged(nameof(SendsGreen));
+    }
+
+    public string StatusShort => Status switch
+    {
+        BridgeStatus.Online => "Connected",
+        BridgeStatus.Connecting => "Connecting",
+        BridgeStatus.Offline => "Offline",
+        _ => "Needs attention",
+    };
+    /// <summary>SMS and RCS drafts get Messages' green send button.</summary>
+    public bool SendsGreen => SendService is not ("" or "iMessage");
+
+    partial void OnStatusChanged(BridgeStatus value)
+    {
+        OnPropertyChanged(nameof(IsOnline));
+        OnPropertyChanged(nameof(StatusShort));
+    }
+    partial void OnComposerTextChanged(string value) => OnPropertyChanged(nameof(HasDraft));
 
     public MainViewModel(BlipSession session)
     {
         _session = session;
-        ConversationsView = CollectionViewSource.GetDefaultView(Conversations);
-        ConversationsView.Filter = o => Filter.Length == 0 || o is ConversationViewModel c &&
-            (c.Title.Contains(Filter, StringComparison.CurrentCultureIgnoreCase) || c.Id.Contains(Filter, StringComparison.OrdinalIgnoreCase));
+        Conversations.CollectionChanged += (_, _) => RefreshVisible();
+        PendingFiles.CollectionChanged += (_, _) => { OnPropertyChanged(nameof(HasDraft)); OnPropertyChanged(nameof(HasPendingFiles)); };
         session.Monitor.Changed += () => _ = ReloadAsync();
-        session.Monitor.StatusChanged += (s, d) => Application.Current.Dispatcher.InvokeAsync(() => OnStatus(s, d));
+        session.Monitor.StatusChanged += (s, d) => Ui.InvokeAsync(() => OnStatus(s, d));
     }
 
     public void Start()
@@ -196,7 +230,7 @@ public sealed partial class MainViewModel : ObservableObject
             catch (BridgeOfflineException)
             {
                 // Try again on the next sidebar load once the Mac is back.
-                await Application.Current.Dispatcher.InvokeAsync(() => { if (_avatars.TryGetValue(vm.Id, out var f) && f is null) _avatars.Remove(vm.Id); });
+                await Ui.InvokeAsync(() => { if (_avatars.TryGetValue(vm.Id, out var f) && f is null) _avatars.Remove(vm.Id); });
             }
             catch { /* initials stay */ }
         }
@@ -204,26 +238,36 @@ public sealed partial class MainViewModel : ObservableObject
 
     private void ShowAvatar(ConversationViewModel vm, byte[] bytes)
     {
-        BitmapImage bmp;
-        try
-        {
-            bmp = new BitmapImage();
-            bmp.BeginInit();
-            bmp.StreamSource = new MemoryStream(bytes);
-            bmp.CacheOption = BitmapCacheOption.OnLoad;
-            bmp.DecodePixelWidth = 96;
-            bmp.EndInit();
-            bmp.Freeze();
-        }
-        catch { return; }   // a photo WPF cannot decode: initials stay
-        Application.Current.Dispatcher.InvokeAsync(() =>
+        Bitmap bmp;
+        try { bmp = ImageDecode.ToWidth(bytes, 96); }
+        catch { return; }   // a photo we cannot decode: initials stay
+        Ui.Post(() =>
         {
             _avatars[vm.Id] = bmp;
             vm.Avatar = bmp;
         });
     }
 
-    partial void OnFilterChanged(string value) => ConversationsView.Refresh();
+    partial void OnFilterChanged(string value) => RefreshVisible();
+
+    private bool Matches(ConversationViewModel c) => Filter.Length == 0
+        || c.Title.Contains(Filter, StringComparison.CurrentCultureIgnoreCase)
+        || c.Id.Contains(Filter, StringComparison.OrdinalIgnoreCase);
+
+    private void RefreshVisible()
+    {
+        var searching = Filter.Length > 0;
+        Sync(PinnedConversations, searching ? [] : Conversations.Where(c => c.Pinned).ToList());
+        Sync(VisibleConversations, Conversations.Where(c => searching ? Matches(c) : !c.Pinned).ToList());
+        OnPropertyChanged(nameof(HasPinned));
+    }
+
+    /// <summary>A tap on a pinned tile, or a row in the list.</summary>
+    [RelayCommand]
+    private void Open(ConversationViewModel? c)
+    {
+        if (c is not null) Selected = c;
+    }
     partial void OnBannerChanged(string value) => OnPropertyChanged(nameof(HasBanner));
     partial void OnReplyTargetChanged(MessageViewModel? value) => OnPropertyChanged(nameof(HasReplyTarget));
 
@@ -266,7 +310,7 @@ public sealed partial class MainViewModel : ObservableObject
             var data = await _session.Client.SidebarAsync();
             var convs = data.Build();
             lock (_dataLock) _sidebar = data;
-            await Application.Current.Dispatcher.InvokeAsync(() => ApplyConversations(convs, live: true));
+            await Ui.InvokeAsync(() => ApplyConversations(convs, live: true));
             ScheduleSave();
             if (Selected is { } sel) await LoadThreadAsync(sel, quiet: true);
             if (!_prefetched) { _prefetched = true; _ = PrefetchThreadsAsync(convs); }
@@ -275,7 +319,7 @@ public sealed partial class MainViewModel : ObservableObject
         catch (BridgeOfflineException) { /* the monitor reports status */ }
         catch (BridgeException e)
         {
-            await Application.Current.Dispatcher.InvokeAsync(() => Banner = e.Message);
+            await Ui.InvokeAsync(() => Banner = e.Message);
         }
     }
 
@@ -285,7 +329,7 @@ public sealed partial class MainViewModel : ObservableObject
         {
             var s = await _session.Client.SessionAsync();
             var text = s.Gui == false ? "Nobody is logged in at the Mac's screen: reading works, sending will fail until someone logs in." : "";
-            await Application.Current.Dispatcher.InvokeAsync(() => { if (!Banner.StartsWith("the Mac's host key")) Banner = text; });
+            await Ui.InvokeAsync(() => { if (!Banner.StartsWith("the Mac's host key")) Banner = text; });
         }
         catch { /* advisory only */ }
     }
@@ -308,6 +352,7 @@ public sealed partial class MainViewModel : ObservableObject
         // Keep a conversation started from "New message" until the Mac lists it.
         if (Selected is { } sel && !convs.Any(c => c.Id == sel.Id)) next.Insert(0, sel);
         Sync(Conversations, next);
+        RefreshVisible();   // a pin or unpin on the Mac changes no list membership, only Model
         OnPropertyChanged(nameof(UnreadTotal));
         if (needFaces.Count > 0) QueueAvatars(needFaces);
         if (!live) return;   // a snapshot never raises toasts, and the first live load stays quiet too
@@ -340,8 +385,51 @@ public sealed partial class MainViewModel : ObservableObject
         }
     }
 
+    partial void OnSelectedChanged(ConversationViewModel? oldValue, ConversationViewModel? newValue)
+    {
+        if (oldValue is not null) oldValue.IsSelected = false;
+        if (newValue is not null) newValue.IsSelected = true;
+    }
+
+    // ---------- image viewer ----------
+
+    /// <summary>The photo open in the in-app viewer, or null.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsViewing), nameof(ViewerPosition), nameof(HasPreviousImage), nameof(HasNextImage))]
+    private AttachmentViewModel? _viewing;
+
+    public bool IsViewing => Viewing is not null;
+    private List<AttachmentViewModel> ThreadImages() =>
+        Messages.SelectMany(m => m.Attachments).Where(a => a.IsImage && (!a.PreviewFailed || a == Viewing)).ToList();
+    private int ViewingIndex => Viewing is null ? -1 : ThreadImages().IndexOf(Viewing);
+    public bool HasPreviousImage => ViewingIndex > 0;
+    public bool HasNextImage => ViewingIndex is var i && i >= 0 && i < ThreadImages().Count - 1;
+    /// <summary>"3 of 7": where this photo sits among the conversation's photos.</summary>
+    public string ViewerPosition => ThreadImages() is { Count: > 1 } all && ViewingIndex >= 0 ? $"{ViewingIndex + 1} of {all.Count}" : "";
+
+    [RelayCommand]
+    private void ViewImage(AttachmentViewModel? a)
+    {
+        if (a is not { IsImage: true }) return;
+        if (a.PreviewFailed) { a.OpenCommand.Execute(null); return; }
+        Viewing = a;
+        _ = a.LoadFullAsync();
+    }
+
+    [RelayCommand] private void CloseViewer() => Viewing = null;
+    [RelayCommand] private void PreviousImage() => Step(-1);
+    [RelayCommand] private void NextImage() => Step(1);
+
+    private void Step(int delta)
+    {
+        var all = ThreadImages();
+        var i = ViewingIndex + delta;
+        if (ViewingIndex >= 0 && i >= 0 && i < all.Count) ViewImage(all[i]);
+    }
+
     partial void OnSelectedChanged(ConversationViewModel? value)
     {
+        Viewing = null;
         Messages.Clear();
         PendingFiles.Clear();
         ReplyTarget = null;
@@ -364,7 +452,7 @@ public sealed partial class MainViewModel : ObservableObject
                 ? await _session.Client.ThreadAsync(conv.Id, ThreadLimit)
                 : [];
             if (msgs.Count > 0) RememberThread(conv.Id, msgs);
-            await Application.Current.Dispatcher.InvokeAsync(() =>
+            await Ui.InvokeAsync(() =>
             {
                 if (Selected != conv) return;
                 ApplyThread(conv, msgs);
@@ -373,7 +461,7 @@ public sealed partial class MainViewModel : ObservableObject
         }
         catch (Exception e) when (e is BridgeException or ArgumentException)
         {
-            if (!quiet) await Application.Current.Dispatcher.InvokeAsync(() => Banner = e.Message);
+            if (!quiet) await Ui.InvokeAsync(() => Banner = e.Message);
         }
         finally
         {
@@ -393,7 +481,7 @@ public sealed partial class MainViewModel : ObservableObject
             var key = m.Guid is { Length: > 0 } g ? g : m.Id.ToString();
             next.Add(existing.TryGetValue(key, out var vm) && vm.SameAs(m)
                 ? vm
-                : new MessageViewModel(m, _session.Client, _session.Cache, conv.Model.IsGroup));
+                : new MessageViewModel(m, _session.Client, _session.Cache, conv.Model.IsGroup) { Owner = this });
         }
         // An optimistic bubble disappears once the Mac lists a sent message with its text.
         foreach (var p in pending)
@@ -407,31 +495,40 @@ public sealed partial class MainViewModel : ObservableObject
         ThreadUpdated?.Invoke();
     }
 
-    /// <summary>Day headers, sender names in groups, and the single "Read/Delivered" line under the newest own message.</summary>
+    /// <summary>
+    /// Time headers after a 30-minute gap, runs of bubbles from one sender (grouped when under
+    /// three minutes apart), sender names at the start of a run in groups, and the single
+    /// "Read/Delivered" line under the newest own message.
+    /// </summary>
     private static void Decorate(List<MessageViewModel> list)
     {
-        DateTimeOffset prev = DateTimeOffset.MinValue;
-        string? prevSender = null;
+        MessageViewModel? prev = null;
         foreach (var m in list)
         {
             var t = m.Model.Time;
-            m.DayHeader = (t - prev).TotalMinutes > 60 ? Formatting.DayHeader(t) : "";
-            m.ShowSender = m.IsGroup && !m.IsMine && (m.Model.Handle != prevSender || m.DayHeader.Length > 0);
-            prev = t;
-            prevSender = m.IsMine ? null : m.Model.Handle;
+            m.DayHeader = prev is null || (t - prev.Model.Time).TotalMinutes > 30 ? Formatting.DayHeader(t) : "";
+            var sameRun = prev is not null && m.DayHeader.Length == 0 && SenderKey(prev) == SenderKey(m)
+                          && (t - prev.Model.Time).TotalMinutes < 3;
+            m.GroupStart = !sameRun;
+            if (prev is not null) prev.GroupEnd = !sameRun;
+            m.ShowSender = m.IsGroup && !m.IsMine && m.GroupStart;
             m.Receipt = "";
+            prev = m;
         }
+        if (prev is not null) prev.GroupEnd = true;
         var last = list.LastOrDefault(m => m.IsMine && !m.Pending && !m.HasFailure && m.Model.Scheduled != true && !m.IsRetracted);
         if (last is not null)
             last.Receipt = last.Model.ReadAt is { Length: > 0 } r ? "Read " + Formatting.BubbleTime(BlipTime.Parse(r))
                 : last.Model.Delivered == true ? "Delivered" : "";
     }
 
+    private static string SenderKey(MessageViewModel m) => m.IsMine ? "\u0001me" : m.Model.Handle ?? m.Sender;
+
     private async Task MarkSeenAsync(ConversationViewModel conv, IReadOnlyList<Message> msgs)
     {
         var latestInbound = msgs.LastOrDefault(m => !m.FromMe);
         _marks.MarkSeen(conv.Id, conv.Model.LastTime);
-        await Application.Current.Dispatcher.InvokeAsync(() =>
+        await Ui.InvokeAsync(() =>
         {
             conv.LocallySeen = true;
             OnPropertyChanged(nameof(UnreadTotal));
@@ -523,8 +620,9 @@ public sealed partial class MainViewModel : ObservableObject
         var m = new Message { Ts = DateTimeOffset.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"), FromMe = true, Text = text,
             Chat = conv.Id, Service = service.Wire() };
         var vm = new MessageViewModel(m, _session.Client, _session.Cache, conv.Model.IsGroup, "pending:" + Guid.NewGuid().ToString("N"))
-        { Pending = true };
+        { Pending = true, Owner = this };
         Messages.Add(vm);
+        Decorate(Messages.ToList());
         ThreadUpdated?.Invoke();
         return vm;
     }
@@ -553,13 +651,11 @@ public sealed partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void CopyText(MessageViewModel m)
     {
-        try { Clipboard.SetText(m.Text); } catch { }
+        if (SetClipboard is { } set) _ = set(m.Text).ContinueWith(_ => { }, TaskScheduler.Default);
     }
 
-    [RelayCommand]
-    private async Task ReactAsync(object? param)
+    public async Task ReactToAsync(MessageViewModel m, string kind)
     {
-        if (param is not object[] { Length: 2 } pair || pair[0] is not MessageViewModel m || pair[1] is not string kind) return;
         if (!Enum.TryParse<TapbackKind>(kind, true, out var k)) return;
         var mine = m.Model.Tapbacks?.Any(t => t.FromMe && Map(t.Emoji) == k) == true;
         var r = await _session.Client.ReactAsync(m.Model, k, remove: mine);

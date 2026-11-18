@@ -1,0 +1,147 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Blip.Windows.Views.SettingsWindow"
+        Title="Blip settings" Width="660" SizeToContent="Height" CanResize="False"
+        WindowStartupLocation="CenterOwner" Icon="/Assets/blip.ico"
+        Background="{DynamicResource WindowSolid}">
+
+  <Window.Styles>
+    <!-- one option: title and explanation on the left, switch on the right -->
+    <Style Selector="DockPanel.option">
+      <Setter Property="Margin" Value="0,10" />
+    </Style>
+    <Style Selector="DockPanel.option > ToggleSwitch">
+      <Setter Property="OnContent" Value="" />
+      <Setter Property="OffContent" Value="" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Margin" Value="16,0,-10,0" />
+    </Style>
+    <Style Selector="DockPanel.option TextBlock.title">
+      <Setter Property="FontSize" Value="14" />
+    </Style>
+    <Style Selector="DockPanel.option TextBlock.hint">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Foreground" Value="{DynamicResource TextSecondary}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+      <Setter Property="Margin" Value="0,2,0,0" />
+    </Style>
+    <Style Selector="Rectangle.rule">
+      <Setter Property="Height" Value="1" />
+      <Setter Property="Fill" Value="{DynamicResource Hairline}" />
+    </Style>
+  </Window.Styles>
+
+  <DockPanel>
+    <!-- footer -->
+    <Border DockPanel.Dock="Bottom" Background="{DynamicResource Card}" BorderBrush="{DynamicResource CardStroke}" BorderThickness="0,1,0,0"
+            Padding="24,14">
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+        <Button Content="Cancel" IsCancel="True" MinWidth="96" Click="OnCancel" />
+        <Button Content="Save" IsDefault="True" MinWidth="96" Classes="accent" Click="OnSave" />
+      </StackPanel>
+    </Border>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="760">
+      <StackPanel Margin="24,20,24,24">
+        <TextBlock Text="Settings" FontSize="22" FontWeight="SemiBold" />
+        <TextBlock x:Name="Intro" Classes="secondary" TextWrapping="Wrap" Margin="0,8,0,0" FontSize="13" IsVisible="False"
+                   Text="Blip talks to the Mac that runs your iMessage bridge over SSH, with a key that can only run the bridge tools. Three steps: name the Mac, create the key, enroll it on the Mac." />
+
+        <TextBlock Classes="section" Text="Your Mac" />
+        <Border Classes="card">
+          <Grid ColumnDefinitions="*,12,96">
+            <StackPanel>
+              <TextBlock Classes="label" Text="Address, as you would ssh to it (user@host)" />
+              <TextBox Text="{Binding Host}" Watermark="you@your-mac" />
+            </StackPanel>
+            <StackPanel Grid.Column="2">
+              <TextBlock Classes="label" Text="Port" />
+              <TextBox Text="{Binding Port}" />
+            </StackPanel>
+          </Grid>
+        </Border>
+
+        <TextBlock Classes="section" Text="Key" />
+        <Border Classes="card">
+          <StackPanel>
+            <TextBlock Classes="label" Text="Private key file: a dedicated ed25519 key, not your everyday one" />
+            <DockPanel>
+              <Button DockPanel.Dock="Right" Content="Create key" Margin="8,0,0,0" Command="{Binding GenerateKeyCommand}" />
+              <TextBox Text="{Binding KeyPath}" />
+            </DockPanel>
+          </StackPanel>
+        </Border>
+
+        <TextBlock Classes="section" Text="Enroll the key on the Mac" />
+        <Border Classes="card">
+          <StackPanel Spacing="10">
+            <TextBlock Classes="secondary" TextWrapping="Wrap" FontSize="12"
+                       Text="Paste this into Terminal on the Mac. It pins the key to blip-dispatch, so it can run the bridge tools and nothing else: no shell, no forwarding. The bridge tools must already be installed in ~/.blip/bin (blip-setup or bridge/mac/install.sh)." />
+            <Border Background="{DynamicResource CodeBack}" CornerRadius="6" Padding="12,10">
+              <SelectableTextBlock Text="{Binding MacCommand}" TextWrapping="Wrap" FontSize="11.5" LineHeight="17"
+                                   FontFamily="Cascadia Mono, Consolas, DejaVu Sans Mono, monospace" />
+            </Border>
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Button Content="Copy command" Classes="accent" Command="{Binding CopyMacCommandCommand}" />
+              <Button Content="Test connection" Command="{Binding TestCommand}" />
+              <Button Content="Forget host key" Command="{Binding ForgetHostKeyCommand}" ToolTip.Tip="Only after you replaced or reinstalled the Mac" />
+            </StackPanel>
+            <SelectableTextBlock Text="{Binding TestResult}" TextWrapping="Wrap" FontSize="13"
+                                 IsVisible="{Binding TestResult, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            <SelectableTextBlock Classes="secondary" FontSize="11" TextWrapping="Wrap">
+              <Run Text="Pinned host key: " /><Run Text="{Binding HostKey}" />
+            </SelectableTextBlock>
+          </StackPanel>
+        </Border>
+
+        <TextBlock Classes="section" Text="Conversations" />
+        <Border Classes="card" Padding="16,4">
+          <StackPanel>
+            <DockPanel Classes="option">
+              <ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding HideSpam}" />
+              <StackPanel><TextBlock Classes="title" Text="Hide spam" /><TextBlock Classes="hint" Text="Conversations your iPhone filed as spam." /></StackPanel>
+            </DockPanel>
+            <Rectangle Classes="rule" />
+            <DockPanel Classes="option">
+              <ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding HideUnknown}" />
+              <StackPanel><TextBlock Classes="title" Text="Hide unknown senders" /><TextBlock Classes="hint" Text="People who aren't in your contacts." /></StackPanel>
+            </DockPanel>
+            <Rectangle Classes="rule" />
+            <DockPanel Classes="option">
+              <ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding PreferIMessage}" />
+              <StackPanel><TextBlock Classes="title" Text="Prefer iMessage" /><TextBlock Classes="hint" Text="Send as iMessage when the contact has used it in this thread." /></StackPanel>
+            </DockPanel>
+            <Rectangle Classes="rule" />
+            <DockPanel Classes="option">
+              <ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding PushRead}" />
+              <StackPanel><TextBlock Classes="title" Text="Mark read on the Mac" /><TextBlock Classes="hint" Text="When you open a conversation. This brings Messages to the front on the Mac." /></StackPanel>
+            </DockPanel>
+          </StackPanel>
+        </Border>
+
+        <TextBlock Classes="section" Text="Tapbacks and replies" />
+        <Border Classes="card" Padding="16,4">
+          <StackPanel>
+            <DockPanel Classes="option">
+              <ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding Tapbacks}" />
+              <StackPanel><TextBlock Classes="title" Text="Tapbacks" /><TextBlock Classes="hint" Text="Drives Messages through Accessibility on the Mac, which needs tapbacks enabled there too." /></StackPanel>
+            </DockPanel>
+            <Rectangle Classes="rule" />
+            <DockPanel Classes="option">
+              <ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding Replies}" />
+              <StackPanel><TextBlock Classes="title" Text="Threaded replies" /><TextBlock Classes="hint" Text="Same Accessibility requirement as tapbacks." /></StackPanel>
+            </DockPanel>
+          </StackPanel>
+        </Border>
+
+        <TextBlock Classes="section" Text="Privacy" />
+        <Border Classes="card" Padding="16,4">
+          <DockPanel Classes="option">
+            <ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding LocalCache}" />
+            <StackPanel><TextBlock Classes="title" Text="Open instantly" /><TextBlock Classes="hint" Text="Keep an encrypted copy of the conversation list and recent threads on this PC. Only your Windows sign-in can read it. Turning this off deletes it." /></StackPanel>
+          </DockPanel>
+        </Border>
+      </StackPanel>
+    </ScrollViewer>
+  </DockPanel>
+</Window>

@@ -25,9 +25,14 @@ BLIP=${1:?path to the Blip repo}
 HERE=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 id blipmac >/dev/null 2>&1 || useradd -m -s /bin/bash blipmac
 usermod -p '*' blipmac                     # unlocked, no password: key auth only
-mkdir -p "$WORK" "$H/Library/Messages/Attachments/ab/01" "$H/.blip/bin" "$H/.ssh" /run/sshd
-python3 "$HERE/make_chat_db.py" "$H/Library/Messages/chat.db"
-printf 'PNGDATA-%.0s' {1..100} > "$H/Library/Messages/Attachments/ab/01/photo.png"
+mkdir -p "$WORK" "$H/Library/Messages/Attachments/ab/01" "$H/Library/Messages/Attachments/ab/02" "$H/.blip/bin" "$H/.ssh" /run/sshd
+python3 "$HERE/make_chat_db.py" "$H/Library/Messages/chat.db" "$H"
+printf 'PNGDATA-%.0s' {1..100} > "$H/Library/Messages/Attachments/ab/01/photo.png"   # not an image: "preview unavailable"
+cp "$HERE/photo-sideways.jpg" "$H/Library/Messages/Attachments/ab/02/IMG_0042.jpeg"
+# sips stand-in where blip-dispatch looks first (a Linux box has no /opt/homebrew): it copies, no
+# resize or conversion, which is enough for a JPEG source and leaves its EXIF orientation alone.
+mkdir -p /opt/homebrew/bin
+install -m 755 "$HERE/stub-sips.py" /opt/homebrew/bin/sips
 find "$BLIP/bridge/mac" -maxdepth 1 -type f -exec cp {} "$H/.blip/bin/" \;
 for t in imsg-send imsg-read; do cp "$HERE/stub-tool.py" "$H/.blip/bin/$t"; done
 chmod +x "$H/.blip/bin/"*

@@ -39,6 +39,20 @@ public static class Formatting
 
     private static readonly string[] Palette = ["#E0533D", "#2F7DE1", "#2F9E63", "#8A4FD6", "#C9822A", "#3F6FB5", "#6B8F3A", "#A3563F", "#4A4F8C", "#1F8F7A"];
 
+    /// <summary>A soft top-to-bottom gradient of the contact's colour, as Messages does for initials.</summary>
+    public static Avalonia.Media.IBrush AvatarBrush(string id)
+    {
+        if (!Avalonia.Media.Color.TryParse(ColorFor(id), out var c)) return Avalonia.Media.Brushes.Gray;
+        static byte Mix(byte v, double t) => (byte)Math.Round(v + (255 - v) * t);
+        var top = Avalonia.Media.Color.FromRgb(Mix(c.R, 0.28), Mix(c.G, 0.28), Mix(c.B, 0.28));
+        return new Avalonia.Media.LinearGradientBrush
+        {
+            StartPoint = new Avalonia.RelativePoint(0.5, 0, Avalonia.RelativeUnit.Relative),
+            EndPoint = new Avalonia.RelativePoint(0.5, 1, Avalonia.RelativeUnit.Relative),
+            GradientStops = { new Avalonia.Media.GradientStop(top, 0), new Avalonia.Media.GradientStop(c, 1) },
+        };
+    }
+
     public static string ColorFor(string id)
     {
         uint h = 2166136261;
